@@ -1,0 +1,5 @@
+1759847573136	Rename package 'com.user_service.entity'
+1759847658606	Rename type 'UserEntity'
+1759847891108	Delete element
+1759848443003	Rename type 'UserRequestDTO'
+1759851610070	Rename type 'UserSignInRequestDTO'

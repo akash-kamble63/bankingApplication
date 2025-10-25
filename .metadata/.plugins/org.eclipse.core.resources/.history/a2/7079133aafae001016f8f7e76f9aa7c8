@@ -1,0 +1,42 @@
+package com.user_service.service;
+
+import org.springframework.security.core.Authentication;
+import org.springframework.stereotype.Service;
+
+import com.user_service.dto.AuthResponse;
+import com.user_service.dto.UserLogInRequestDTO;
+import com.user_service.dto.UserSignUpRequestDTO;
+import com.user_service.repository.UserRepository;
+@Service
+public class AuthServiceImpl implements AuthService {
+
+	private final UserRepository userRepository;
+	
+	public AuthServiceImpl(UserRepository userRepository) {
+		this.userRepository = userRepository;
+	}
+	
+	
+	@Override
+	public AuthResponse registerUser(UserSignUpRequestDTO request) throws Exception {
+		// TODO Auto-generated method stub
+		
+		String normalizedEmail = request.getUsername().trim().toLowerCase();
+		
+		if(userRepository.findBy)
+		return null;
+	}
+
+	@Override
+	public AuthResponse LoginUser(UserLogInRequestDTO request) throws Exception {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public Authentication authenticate(String username, String password) throws Exception {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+}
