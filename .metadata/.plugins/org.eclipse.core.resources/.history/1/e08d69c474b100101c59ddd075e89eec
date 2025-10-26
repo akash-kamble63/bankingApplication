@@ -1,5 +1,0 @@
-package com.user_service.mapper;
-
-public interface UserMapper {
-
-}

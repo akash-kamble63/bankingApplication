@@ -34,7 +34,7 @@ public class Users {
 	private String email;
 	
 	@CreationTimestamp
-	private LocalDate localDate;
+	private LocalDate createdOn;
 	
 	@OneToOne(cascade = CascadeType.ALL)
 	@JoinColumn(name="user_profile_id", referencedColumnName = "profileId")
