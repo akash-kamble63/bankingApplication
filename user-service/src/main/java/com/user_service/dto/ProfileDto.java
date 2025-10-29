@@ -1,25 +1,16 @@
-package com.user_service.model;
+package com.user_service.dto;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-@Entity
-@Builder
 @Data
-@NoArgsConstructor
+@Builder
 @AllArgsConstructor
-public class Profile {
+@NoArgsConstructor
+public class ProfileDto {
 
-	@Id
-	@GeneratedValue(strategy = GenerationType.AUTO)
-	private Long profileId;
-	
 	private String firstName;
 
 	private String lastName;

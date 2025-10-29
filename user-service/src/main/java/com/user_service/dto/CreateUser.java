@@ -1,4 +1,4 @@
-package com.user_service.dto.response;
+package com.user_service.dto;
 
 import com.user_service.enums.Roles;
 import com.user_service.model.Profile;
@@ -28,6 +28,6 @@ public class CreateUser {
     @NotBlank(message = "Email is required")
 	private String email;
 	@Valid
-	private Profile userProfile;
+	private ProfileDto userProfile;
 	
 }

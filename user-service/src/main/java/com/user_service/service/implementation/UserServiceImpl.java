@@ -1,7 +1,8 @@
-package com.user_service.service;
+package com.user_service.service.implementation;
 
-import com.user_service.dto.response.CreateUser;
+import com.user_service.dto.CreateUser;
 import com.user_service.dto.response.Response;
+import com.user_service.service.UserService;
 
 public class UserServiceImpl implements UserService {
 
