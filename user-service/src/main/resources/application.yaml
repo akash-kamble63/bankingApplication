@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: user-service
+
+  security:
+    oauth2:
+      client:
+        registration:
+          keycloak:
+            client-id: user-service
+            client-secret: 41CzX4dw1NqwfLnZ8mp1i7PT91yyPQeh
+            scope: openid, profile, email
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+        provider:
+          keycloak:
+            issuer-uri: http://localhost:8080/realms/banking-realm
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/userdb
+    username: postgres
+    password: your_password
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
