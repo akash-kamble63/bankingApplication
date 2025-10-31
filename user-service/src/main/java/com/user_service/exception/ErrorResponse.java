@@ -7,12 +7,9 @@ import lombok.NoArgsConstructor;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-public class GlobalException extends RuntimeException {
+public class ErrorResponse {
 
-	private String message;
+	private String errorMsg;
 	private String errorCode;
 	
-	public GlobalException(String message) {
-		this.message = message;
-	}
 }

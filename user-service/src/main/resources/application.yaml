@@ -27,3 +27,10 @@ spring:
       ddl-auto: update
     show-sql: true
     database-platform: org.hibernate.dialect.PostgreSQLDialect
+
+app:
+  codes:
+    bad_request: 400
+    conflict: 409
+    success: 200
+    not_found: 404
