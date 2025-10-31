@@ -28,11 +28,11 @@ public class UserController {
 		return ResponseEntity.ok("");
 	}
 	
-	@PostMapping
+	@PostMapping("/register")
 	public ResponseEntity<?> createUser(@RequestBody CreateUser userDTO){
 		log.info("creating user with: {}", userDTO.toString());
 		
-		return ResponseEntity.ok(userService);
+		return ResponseEntity.ok(userService.createUser(userDTO));
 	}
 	
 	

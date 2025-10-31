@@ -8,6 +8,6 @@ import com.user_service.model.Users;
 
 public interface UserRepository extends JpaRepository<Users, Long>{
 
-	public Optional<Users> findByUserName(String username);
+	public Optional<Users> findByUsername(String username);
 	public Optional<Users> findByEmail(String username);
 }

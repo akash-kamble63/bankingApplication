@@ -1,22 +1,12 @@
 package com.user_service.service.implementation;
 
-import java.util.List;
-
-import org.keycloak.representations.idm.UserRepresentation;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 
 import com.user_service.dto.AuthResponse;
-import com.user_service.dto.CreateUser;
 import com.user_service.dto.UserLogInRequestDTO;
 import com.user_service.dto.UserSignUpRequestDTO;
-import com.user_service.dto.response.Response;
-import com.user_service.mapper.UserMapper;
-import com.user_service.model.Users;
-import com.user_service.repository.UserRepository;
 import com.user_service.service.AuthService;
-import com.user_service.service.KeycloakService;
 
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;

@@ -13,7 +13,6 @@ public interface UserMapper {
 	UserMapper INSTANCE = Mappers.getMapper(UserMapper.class);
 	@Mapping(target = "id", ignore = true)
 	@Mapping(target = "createdOn", expression = "java(java.time.LocalDate.now())")
-	@Mapping(target = "userProfile", source = "userProfile")
 	Users mapUser(CreateUser createUser);
 	UserSignUpRequestDTO mapToDto(Users entity);
 	
