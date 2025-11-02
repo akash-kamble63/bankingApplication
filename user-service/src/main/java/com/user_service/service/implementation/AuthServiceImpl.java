@@ -1,5 +1,6 @@
 package com.user_service.service.implementation;
 
+import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 
@@ -30,6 +31,12 @@ public class AuthServiceImpl implements AuthService {@Override
 
 	@Override
 	public Authentication authenticate(String username, String password) throws Exception {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public UserRepresentation getUserById(String userId) {
 		// TODO Auto-generated method stub
 		return null;
 	}

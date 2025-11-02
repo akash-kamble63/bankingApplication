@@ -20,4 +20,7 @@ public interface KeycloakService {
 	 */
 	List<UserRepresentation> readUserByEmail(String email);
 	
+	
+	void sendVerificationEmail(String userId);
+	UserRepresentation getUserById(String userId);
 }

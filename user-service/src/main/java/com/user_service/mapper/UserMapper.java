@@ -4,7 +4,7 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.factory.Mappers;
 
-import com.user_service.dto.CreateUser;
+import com.user_service.dto.CreateUserRequest;
 import com.user_service.dto.UserSignUpRequestDTO;
 import com.user_service.model.Users;
 
@@ -12,8 +12,8 @@ import com.user_service.model.Users;
 public interface UserMapper {
 	UserMapper INSTANCE = Mappers.getMapper(UserMapper.class);
 	@Mapping(target = "id", ignore = true)
-	@Mapping(target = "createdOn", expression = "java(java.time.LocalDate.now())")
-	Users mapUser(CreateUser createUser);
+	@Mapping(target =  "createdAt", expression = "java(java.time.LocalDate.now())")
+	Users mapUser(CreateUserRequest createUser);
 	UserSignUpRequestDTO mapToDto(Users entity);
 	
 }

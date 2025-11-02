@@ -17,16 +17,28 @@ spring:
     show-sql: true
     database-platform: org.hibernate.dialect.PostgreSQLDialect
 
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:8280/realms/banking-realm
+
 app:
   config:
     keycloak:
-      server-url: http://localhost:8080
-      realm: banking-app
+      server-url: http://localhost:8280
+      realm: banking-realm
       client-id: user-service
-      client-secret: 41CzX4dw1NqwfLnZ8mp1i7PT91yyPQeh
+      client-secret: z5yklGXHMwS7ZJy9ZniGTGKG1HFp4ImV
 
   codes:
     bad_request: 400
     conflict: 409
     success: 200
-    not_found: 404
+    not_found: 404		
+  email:
+   verification:
+        enabled: true
+        resend-limit: 3
+        expiry-hourse: 1
+      

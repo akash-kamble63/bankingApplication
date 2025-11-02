@@ -29,6 +29,8 @@ public class KeyCloakProp {
 	 * @return keyCloak instance
 	 */
 	public Keycloak getKeycloakInstance() {
+		
+		System.out.println("-------------------------------->"+realm);
         if (keycloakInstance == null) {
             keycloakInstance = KeycloakBuilder.builder()
                     .serverUrl(serverUrl)
