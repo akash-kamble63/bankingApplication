@@ -10,19 +10,37 @@ spring:
     username: postgres
     password: admin
     driver-class-name: org.postgresql.Driver
+  hikari:
+    maximum-pool-size: 10
+    minimum-idle: 5
+    connection-timeout: 30000
+    idle-timeout: 600000
+    max-lifetime: 1800000
 
   jpa:
     hibernate:
       ddl-auto: update
     show-sql: true
     database-platform: org.hibernate.dialect.PostgreSQLDialect
-
+    properties:
+       hibernate:
+          format_sql: true
+          use_sql_comments: true
   security:
     oauth2:
       resourceserver:
         jwt:
           issuer-uri: http://localhost:8280/realms/banking-realm
-
+    task:
+       scheduling:
+          pool:
+             size: 5
+          thread-name-prefix: scheduled-
+       execution:
+         pool:
+            core-size: 5
+            maxsize: 10
+            queue-capacity: 100
 app:
   config:
     keycloak:
@@ -30,6 +48,12 @@ app:
       realm: banking-realm
       client-id: user-service
       client-secret: z5yklGXHMwS7ZJy9ZniGTGKG1HFp4ImV
+  sync:
+    verification:
+       cron: "0 */5 * * * ?"
+
+  webhook:
+     secret:
 
   codes:
     bad_request: 400
@@ -41,4 +65,10 @@ app:
         enabled: true
         resend-limit: 3
         expiry-hourse: 1
-      
+logging:
+  level:
+    com.user_service: DEBUG
+    org.springframework.security: DEBUG
+    org.keycloak: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"

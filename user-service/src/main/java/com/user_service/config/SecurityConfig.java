@@ -11,13 +11,18 @@ import org.springframework.security.config.Customizer;
 @EnableWebSecurity
 public class SecurityConfig {
 
-    @Bean
+	@Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
-                // ✅ Allow public access to registration endpoints
-                .requestMatchers("/api/users/register", "/api/users/test", "/api/users/resend-verification").permitAll()
+                // Public endpoints
+                .requestMatchers(
+                    "/api/users/register",
+                    "/api/users/test",
+                    "/api/webhooks/**",  // ✅ Allow webhook endpoints
+                    "/actuator/health"    // Health check endpoint
+                ).permitAll()
                 // All other requests require authentication
                 .anyRequest().authenticated()
             )
@@ -27,5 +32,5 @@ public class SecurityConfig {
         return http.build();
     }
     
-    // ✅ Remove the jwtDecoder bean - Spring will create it automatically from application.yml
+
 }
