@@ -18,7 +18,7 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @RestControllerAdvice
-public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
+public class GlobalExceptionHandler {
 
 	@ExceptionHandler(ResourceConflictException.class)
     public ResponseEntity<ApiResponse<Void>> handleResourceConflict(ResourceConflictException ex) {
@@ -28,8 +28,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 .body(ApiResponse.error("409", ex.getMessage()));
     }
 
-    @ExceptionHandler(ResourceNotFound.class)
-    public ResponseEntity<ApiResponse<Void>> handleResourceNotFound(ResourceNotFound ex) {
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleResourceNotFound(ResourceNotFoundException ex) {
         log.error("Resource not found: {}", ex.getMessage());
         return ResponseEntity
                 .status(HttpStatus.NOT_FOUND)

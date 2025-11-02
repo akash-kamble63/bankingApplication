@@ -7,6 +7,6 @@ public class ResourceConflictException extends GlobalException{
 	}
 	
 	public ResourceConflictException(String message) {
-		super(message);
-	}
+        super(message);
+    }
 }

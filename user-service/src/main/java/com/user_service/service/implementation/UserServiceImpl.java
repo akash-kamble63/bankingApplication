@@ -3,7 +3,6 @@ package com.user_service.service.implementation;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.UUID;
 
 import org.keycloak.representations.idm.CredentialRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
@@ -11,15 +10,18 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.user_service.config.KeyCloakManager;
+import com.user_service.dto.ApiResponse;
 import com.user_service.dto.CreateUserRequest;
-import com.user_service.dto.response.Response;
-import com.user_service.enums.Status;
+import com.user_service.dto.UserResponse;
+import com.user_service.enums.UserStatus;
 import com.user_service.exception.ResourceConflictException;
-import com.user_service.model.Profile;
-import com.user_service.model.Users;
+import com.user_service.exception.ResourceNotFoundException;
+import com.user_service.mapper.UserMapper;
+import com.user_service.model.User;
 import com.user_service.repository.UserRepository;
 import com.user_service.service.KeycloakService;
 import com.user_service.service.UserService;
+import com.user_service.utility.Constants;
 
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -34,86 +36,116 @@ public class UserServiceImpl implements UserService {
 	private final UserRepository userRepository;
 	private final KeycloakService keycloakService;
 	private final KeyCloakManager keyCloakManager;
-
+	private final UserMapper userMapper;
 	@Value("${app.codes.success}")
 	private String responseCodeSuccess;
 	@Value("${app.codes.not_found}")
 	private String responseCodeNodeFound;
 
 	@Override
-	public Response createUser(CreateUserRequest userDto) {
+	public ApiResponse<UserResponse> createUser(CreateUserRequest request) {
+		log.info("Creating user with email: {}", request.getEmailId());
 
 		// Check if user already exists
-		List<UserRepresentation> userRepresentations = keycloakService.readUserByEmail(userDto.getEmailId());
-		if (!userRepresentations.isEmpty()) {
-			log.error("Email is already associated with other user");
-			throw new ResourceConflictException("Email is already associated with other user");
+		if (userRepository.existsByEmail(request.getEmailId())) {
+			log.error("Email already exists: {}", request.getEmailId());
+			throw new ResourceConflictException(Constants.EMAIL_ALREADY_EXISTS);
 		}
 
-		// Create UserRepresentation
-		UserRepresentation userRepresentation = new UserRepresentation();
-		userRepresentation.setUsername(userDto.getEmailId());
-		userRepresentation.setFirstName(userDto.getFirstName());
-		userRepresentation.setLastName(userDto.getLastName());
-		userRepresentation.setEmailVerified(false); // ✅ Not verified initially
-		userRepresentation.setEnabled(true); // ✅ Enabled but requires actions
-		userRepresentation.setEmail(userDto.getEmailId());
-
-		// Set required action for email verification
-		userRepresentation.setRequiredActions(Arrays.asList("VERIFY_EMAIL")); // ✅ ADDED THIS!
-
-		// Create Credential
-		CredentialRepresentation credentialRepresentation = new CredentialRepresentation();
-		credentialRepresentation.setType(CredentialRepresentation.PASSWORD);
-		credentialRepresentation.setValue(userDto.getPassword());
-		credentialRepresentation.setTemporary(false);
-		userRepresentation.setCredentials(Collections.singletonList(credentialRepresentation));
+		// Create Keycloak user representation
+		UserRepresentation keycloakUser = buildKeycloakUser(request);
 
 		// Create user in Keycloak
-		Integer userCreationResponse = keycloakService.createUser(userRepresentation);
+		Integer status = keycloakService.createUser(keycloakUser);
 
-		if (userCreationResponse.equals(201)) {
-			List<UserRepresentation> representations = keycloakService.readUserByEmail(userDto.getEmailId());
-
-			// Send verification email
-			try {
-				sendVerificationEmail(representations.get(0).getId());
-				log.info("Verification email sent to: {}", userDto.getEmailId());
-			} catch (Exception e) {
-				log.error("Failed to send verification email: {}", e.getMessage());
-				// Continue even if email fails - user can resend later
-			}
-
-			Profile profile = Profile.builder().firstName(userDto.getFirstName()).lastName(userDto.getLastName())
-					.build();
-
-			Users user = Users.builder().username(userDto.getEmailId()).email(userDto.getEmailId())
-					.contactNo(userDto.getContactNumber()).status(Status.PENDING) // User is pending until email
-																					// verified
-					.profile(profile).authId(representations.get(0).getId())
-					.identificationNumber(UUID.randomUUID().toString()).build();
-
-			userRepository.save(user);
-
-			log.info("User created successfully with authId: {}", representations.get(0).getId());
-
-			return Response.builder().responseCode(responseCodeSuccess)
-					.responseMessage("User registered successfully. Please check your email to verify your account.")
-					.build();
+		if (!status.equals(Constants.KEYCLOAK_CREATED)) {
+			log.error("Failed to create user in Keycloak. Status: {}", status);
+			throw new RuntimeException("Failed to create user in authentication service");
 		}
 
-		log.error("Failed to create user in Keycloak. Status code: {}", userCreationResponse);
-		throw new RuntimeException("Failed to create user. Status: " + userCreationResponse);
-	}
+		// Get created user from Keycloak to get the ID
+		List<UserRepresentation> keycloakUsers = keycloakService.readUserByEmail(request.getEmailId());
+		if (keycloakUsers.isEmpty()) {
+			throw new RuntimeException("User created in Keycloak but not found");
+		}
 
-	// Add this method to send verification email
-	private void sendVerificationEmail(String userId) {
+		String keycloakUserId = keycloakUsers.get(0).getId();
+		log.info("User created in Keycloak with ID: {}", keycloakUserId);
+
+		// Send verification email
 		try {
-			keyCloakManager.getKeyCloakInstanceWithRealm().users().get(userId).sendVerifyEmail();
+			keycloakService.sendVerificationEmail(keycloakUserId);
+			log.info("Verification email sent to: {}", request.getEmailId());
 		} catch (Exception e) {
-			log.error("Error sending verification email: {}", e.getMessage());
-			throw e;
+			log.error("Failed to send verification email: {}", e.getMessage());
+			// Continue - user is created, they can resend email later
 		}
+
+		// Map request to entity and set Keycloak ID
+		User user = userMapper.toEntity(request);
+		user.setAuthId(keycloakUserId);
+		user.setStatus(UserStatus.PENDING);
+
+		// Save to database
+		User savedUser = userRepository.save(user);
+		log.info("User saved to database with ID: {}", savedUser.getId());
+
+		// Map to response
+		UserResponse userResponse = userMapper.toResponse(savedUser);
+
+		return ApiResponse.success(userResponse, Constants.USER_CREATED);
 	}
+
+	/**
+	 * Build Keycloak UserRepresentation from CreateUserRequest
+	 */
+	private UserRepresentation buildKeycloakUser(CreateUserRequest request) {
+		UserRepresentation userRepresentation = new UserRepresentation();
+		userRepresentation.setUsername(request.getEmailId());
+		userRepresentation.setFirstName(request.getFirstName());
+		userRepresentation.setLastName(request.getLastName());
+		userRepresentation.setEmail(request.getEmailId());
+		userRepresentation.setEmailVerified(false);
+		userRepresentation.setEnabled(true);
+		userRepresentation.setRequiredActions(Arrays.asList(Constants.VERIFY_EMAIL_ACTION));
+
+		// Set password credential
+		CredentialRepresentation credential = new CredentialRepresentation();
+		credential.setType(CredentialRepresentation.PASSWORD);
+		credential.setValue(request.getPassword());
+		credential.setTemporary(false);
+		userRepresentation.setCredentials(Collections.singletonList(credential));
+
+		return userRepresentation;
+	}
+
+	@Override
+	public ApiResponse<UserResponse> getUserByEmail(String email) {
+		log.info("Fetching user by email: {}", email);
+	    
+	    User user = userRepository.findByEmail(email)
+	            .orElseThrow(() -> new ResourceNotFoundException(Constants.USER_NOT_FOUND));
+	    
+	    UserResponse response = userMapper.toResponse(user);
+	    return ApiResponse.success(response, "User found");
+	}
+
+	@Override
+	public ApiResponse<Void> resendVerificationEmail(String email) {
+		log.info("Resending verification email to: {}", email);
+	    
+	    User user = userRepository.findByEmail(email)
+	            .orElseThrow(() -> new ResourceNotFoundException(Constants.USER_NOT_FOUND));
+	    
+	    if (user.getStatus() == UserStatus.ACTIVE) {
+	        return ApiResponse.error("400", "Email already verified");
+	    }
+	    
+	    keycloakService.sendVerificationEmail(user.getAuthId());
+	    
+	    return ApiResponse.success(Constants.VERIFICATION_EMAIL_SENT);
+	}
+	
+	
 
 }

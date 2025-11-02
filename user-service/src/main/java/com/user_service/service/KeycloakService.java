@@ -22,5 +22,8 @@ public interface KeycloakService {
 	
 	
 	void sendVerificationEmail(String userId);
+	
 	UserRepresentation getUserById(String userId);
+	
+	
 }

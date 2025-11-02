@@ -8,11 +8,11 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import com.user_service.enums.Status;
+import com.user_service.enums.UserStatus;
 import com.user_service.event.KeycloakEventType;
 import com.user_service.event.KeycloakWebhookEvent;
-import com.user_service.exception.ResourceNotFound;
-import com.user_service.model.Users;
+import com.user_service.exception.ResourceNotFoundException;
+import com.user_service.model.User;
 import com.user_service.repository.UserRepository;
 import com.user_service.service.KeycloakService;
 import com.user_service.service.VerificationSyncService;
@@ -70,11 +70,11 @@ public class VerificationSyncServiceImpl implements VerificationSyncService{
         
         try {
             // Find user in database
-            Users user = userRepository.findByAuthId(authId)
-                    .orElseThrow(() -> new ResourceNotFound("User not found with authId: " + authId));
+            User user = userRepository.findByAuthId(authId)
+                    .orElseThrow(() -> new ResourceNotFoundException("User not found with authId: " + authId));
             
             // Skip if already active
-            if (user.getStatus() == Status.ACTIVE && user.getEmailVerifiedAt() != null) {
+            if (user.getStatus() == UserStatus.ACTIVE && user.getEmailVerifiedAt() != null) {
                 log.debug("User {} already active and verified, skipping sync", user.getEmail());
                 return;
             }
@@ -91,7 +91,7 @@ public class VerificationSyncServiceImpl implements VerificationSyncService{
             if (Boolean.TRUE.equals(keycloakUser.isEmailVerified())) {
                 log.info("Email verified in Keycloak for user: {}, updating database", user.getEmail());
                 
-                user.setStatus(Status.ACTIVE);
+                user.setStatus(UserStatus.ACTIVE);
                 user.setEmailVerifiedAt(LocalDateTime.now());
                 userRepository.save(user);
                 
@@ -100,7 +100,7 @@ public class VerificationSyncServiceImpl implements VerificationSyncService{
                 log.debug("Email not yet verified in Keycloak for user: {}", user.getEmail());
             }
             
-        } catch (ResourceNotFound e) {
+        } catch (ResourceNotFoundException e) {
             log.error("User not found: {}", e.getMessage());
             throw e;
         } catch (Exception e) {
@@ -127,7 +127,7 @@ public class VerificationSyncServiceImpl implements VerificationSyncService{
         
         try {
             // Find all users with PENDING status
-            List<Users> pendingUsers = userRepository.findByStatus(Status.PENDING);
+            List<User> pendingUsers = userRepository.findByStatus(UserStatus.PENDING);
             
             if (pendingUsers.isEmpty()) {
                 log.info("No pending users found for verification sync");
@@ -136,7 +136,7 @@ public class VerificationSyncServiceImpl implements VerificationSyncService{
             
             log.info("Found {} pending users to check for verification", pendingUsers.size());
             
-            for (Users user : pendingUsers) {
+            for (User user : pendingUsers) {
                 try {
                     // Get user from Keycloak
                     UserRepresentation keycloakUser = keycloakService.getUserById(user.getAuthId());
@@ -152,7 +152,7 @@ public class VerificationSyncServiceImpl implements VerificationSyncService{
                     if (Boolean.TRUE.equals(keycloakUser.isEmailVerified())) {
                         log.info("Updating user {} from PENDING to ACTIVE", user.getEmail());
                         
-                        user.setStatus(Status.ACTIVE);
+                        user.setStatus(UserStatus.ACTIVE);
                         user.setEmailVerifiedAt(LocalDateTime.now());
                         userRepository.save(user);
                         

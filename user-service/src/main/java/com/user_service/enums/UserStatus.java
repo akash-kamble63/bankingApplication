@@ -1,6 +1,6 @@
 package com.user_service.enums;
 
-public enum Status {
+public enum UserStatus {
 
 	PENDING,        // Waiting for email verification
     ACTIVE,         // Email verified, account active

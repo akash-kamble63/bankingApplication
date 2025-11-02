@@ -1,12 +1,12 @@
 package com.user_service.exception;
 
-public class ResourceNotFound extends GlobalException{
+public class ResourceNotFoundException extends GlobalException{
 
-	public ResourceNotFound() {
+	public ResourceNotFoundException() {
 		super("Resource not found on the server", GlobalError.NOT_FOUND);
 	}
 	
-	public ResourceNotFound(String message) {
+	public ResourceNotFoundException(String message) {
 		super(message,GlobalError.NOT_FOUND);
 	}
 }

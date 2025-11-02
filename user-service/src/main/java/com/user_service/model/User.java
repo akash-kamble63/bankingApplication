@@ -5,7 +5,7 @@ import java.time.LocalDateTime;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
-import com.user_service.enums.Status;
+import com.user_service.enums.UserStatus;
 
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
@@ -36,7 +36,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
-public class Users {
+public class User {
     
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -53,7 +53,7 @@ public class Users {
     
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private Status status;
+    private UserStatus status;
     
     @Column(name = "auth_id", unique = true, nullable = false)
     private String authId; // Keycloak user ID
