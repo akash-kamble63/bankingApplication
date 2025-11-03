@@ -11,26 +11,34 @@ import org.springframework.security.config.Customizer;
 @EnableWebSecurity
 public class SecurityConfig {
 
-	@Bean
+    @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
-                // Public endpoints
                 .requestMatchers(
+                    // ✅ Public endpoints
                     "/api/users/register",
                     "/api/users/test",
-                    "/api/webhooks/**",  // ✅ Allow webhook endpoints
-                    "/actuator/health"    // Health check endpoint
+                    "/api/users/resend-verification",
+                    "/api/webhooks/**",
+                    "/actuator/health",
+
+                    // ✅ Swagger / OpenAPI endpoints (Springdoc 2.x)
+                    "/swagger-ui.html",
+                    "/swagger-ui/**",
+                    "/v3/api-docs/**",
+                    "/v3/api-docs/swagger-config"
                 ).permitAll()
-                // All other requests require authentication
+                .requestMatchers(
+                    "/api/users/{userId}/activate",
+                    "/api/users/{userId}/deactivate",
+                    "/api/users"
+                ).hasRole("ADMIN")
                 .anyRequest().authenticated()
             )
-            .oauth2ResourceServer(oauth2 -> oauth2
-                .jwt(Customizer.withDefaults())
-            );
+            .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
+
         return http.build();
     }
-    
-
 }
