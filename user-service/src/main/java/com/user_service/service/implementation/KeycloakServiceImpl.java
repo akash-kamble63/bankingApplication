@@ -102,6 +102,27 @@ private final KeyCloakManager keyCloakManager;
             throw new KeycloakOperationException("Failed to fetch user from Keycloak", e);
         }
     }
+
+	@Override
+	public void updateKeycloakUser(String userId, UserRepresentation userRepresentation) {
+		log.info("Updating user in Keycloak: {}", userId);
+	    
+	    try {
+	        keyCloakManager.getKeyCloakInstanceWithRealm()
+	                .users()
+	                .get(userId)
+	                .update(userRepresentation);
+	        
+	        log.info("User updated successfully in Keycloak: {}", userId);
+	        
+	    } catch (NotFoundException e) {
+	        log.error("User not found in Keycloak with ID: {}", userId);
+	        throw new KeycloakOperationException("User not found in Keycloak: " + userId, e);
+	    } catch (Exception e) {
+	        log.error("Error updating user in Keycloak with ID {}: {}", userId, e.getMessage(), e);
+	        throw new KeycloakOperationException("Failed to update user in Keycloak", e);
+	    }
+	}
 	
 
 }

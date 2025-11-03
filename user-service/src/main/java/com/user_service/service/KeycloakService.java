@@ -25,5 +25,7 @@ public interface KeycloakService {
 	
 	UserRepresentation getUserById(String userId);
 	
+    void updateKeycloakUser(String userId, UserRepresentation userRepresentation);
+	
 	
 }
