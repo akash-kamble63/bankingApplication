@@ -23,8 +23,6 @@ public class SecurityConfig {
                     "/api/users/resend-verification",
                     "/api/webhooks/**",
                     "/actuator/health",
-
-                    // ✅ Swagger / OpenAPI endpoints (Springdoc 2.x)
                     "/swagger-ui.html",
                     "/swagger-ui/**",
                     "/v3/api-docs/**",

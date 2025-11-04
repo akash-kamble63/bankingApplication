@@ -1,0 +1,3 @@
+com\banking\keycloak\BankingEventListenerProviderFactory.class
+com\banking\keycloak\WebhookSender.class
+com\banking\keycloak\BankingEventListenerProvider.class
