@@ -4,6 +4,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 import com.user_service.dto.ApiResponse;
+import com.user_service.dto.ChangePasswordRequest;
 import com.user_service.dto.CreateUserRequest;
 import com.user_service.dto.UpdateProfileRequest;
 import com.user_service.dto.UpdateUserRequest;
@@ -123,4 +124,8 @@ public interface UserService {
 
 	ApiResponse<Page<UserResponse>> getAllUsers(Pageable pageable);
 	ApiResponse<Page<UserResponse>> getUsersByStatus(UserStatus status, Pageable pageable);
+	
+	
+//	ApiResponse<Page<ActivityLogResponse>> getUserActivityLogs(Long userId, Pageable pageable);
+
 }

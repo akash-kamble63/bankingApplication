@@ -44,6 +44,20 @@ spring:
             core-size: 5
             maxsize: 10
             queue-capacity: 100
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: # Leave empty if no password
+      timeout: 60000
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 2
+          max-wait: -1ms
+        shutdown-timeout: 100ms
 app:
   config:
     keycloak:
@@ -68,6 +82,12 @@ app:
         enabled: true
         resend-limit: 3
         expiry-hourse: 1
+
+  password:
+    reset:
+      token-expiry-hours: 24  # Token valid for 24 hours
+      max-attempts: 3  # Max reset attempts per user
+
 logging:
   level:
     com.user_service: DEBUG

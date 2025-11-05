@@ -7,13 +7,15 @@ import java.util.List;
 import org.keycloak.representations.idm.CredentialRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.user_service.config.KeyCloakManager;
 import com.user_service.dto.ApiResponse;
+import com.user_service.dto.ChangePasswordRequest;
 import com.user_service.dto.CreateUserRequest;
 import com.user_service.dto.UpdateProfileRequest;
 import com.user_service.dto.UpdateUserRequest;
@@ -104,6 +106,9 @@ public class UserServiceImpl implements UserService {
 		return ApiResponse.success(userResponse, Constants.USER_CREATED);
 	}
 
+
+	// ====================================READ METHODS=====================================
+
 	@Override
 	@Transactional(readOnly = true)
 	public ApiResponse<Page<UserResponse>> getUsersByStatus(UserStatus status, Pageable pageable) {
@@ -115,8 +120,7 @@ public class UserServiceImpl implements UserService {
 
 		return ApiResponse.success(userResponses, "Users retrieved successfully");
 	}
-	// ====================================READ METHODS=====================================
-
+	
 	@Override
 	@Transactional(readOnly = true)
 	public ApiResponse<UserResponse> getUserByEmail(String email) {
@@ -141,7 +145,8 @@ public class UserServiceImpl implements UserService {
 	}
 
 	@Override
-	@Transactional(readOnly = true)
+	@Transactional(readOnly = true	)
+	@Cacheable(value = "users", key = "#userId")
 	public ApiResponse<UserResponse> getUserById(Long userId) {
 		log.info("Feching user details by UserID:{}", userId);
 		User user = userRepository.findById(userId)
@@ -178,6 +183,8 @@ public class UserServiceImpl implements UserService {
 
 	@Override
 	@Transactional
+	@CacheEvict(value = "users", key = "#userId")
+
 	public ApiResponse<UserResponse> updateUser(Long userId, UpdateUserRequest request) {
 		log.info("Updating user with ID: {}", userId);
 
@@ -389,5 +396,8 @@ public class UserServiceImpl implements UserService {
 			keycloakService.updateKeycloakUser(authId, keycloakUser);
 		}
 	}
+
+
+	
 
 }

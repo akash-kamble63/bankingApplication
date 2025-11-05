@@ -26,6 +26,11 @@ public interface KeycloakService {
 	UserRepresentation getUserById(String userId);
 	
     void updateKeycloakUser(String userId, UserRepresentation userRepresentation);
+    
+    
+    void changePassword(String userId, String newPassword);
+    void sendPasswordResetEmail(String userId);
+    boolean verifyPassword(String userId, String password);
 	
 	
 }

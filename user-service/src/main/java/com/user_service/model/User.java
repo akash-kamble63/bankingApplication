@@ -76,6 +76,9 @@ public class User {
     @Column(name = "email_verified_at")
     private LocalDateTime emailVerifiedAt;
     
+    @Column(name = "profile_picture_url")
+    private String profilePictureUrl;
+    
     @Version
     private Long version; // Optimistic locking
 }
