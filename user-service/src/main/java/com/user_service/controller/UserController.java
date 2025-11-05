@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.user_service.annotation.RateLimit;
 import com.user_service.dto.ApiResponse;
 import com.user_service.dto.CreateUserRequest;
 import com.user_service.dto.UpdateProfileRequest;
@@ -49,6 +50,7 @@ private final UserService userService;
     //==================================CREATE METHDOS=================================
     
     @PostMapping("/register")
+    @RateLimit(limit = 5, key = "register")
     public ResponseEntity<ApiResponse<UserResponse>> registerUser(
             @Valid @RequestBody CreateUserRequest request) {
         
@@ -60,6 +62,7 @@ private final UserService userService;
     //===================================READ METHDOS=================================
     
     @GetMapping("/email/{email}")
+    @RateLimit(limit = 20, key = "getUserByEmail")
     public ResponseEntity<ApiResponse<UserResponse>> getUserByEmail(
             @PathVariable String email) {
         
@@ -69,6 +72,7 @@ private final UserService userService;
     }
     
     @GetMapping("/me")
+    @RateLimit(limit = 20, key = "getCurrentUser")
     public ResponseEntity<ApiResponse<?>> getCurrentUser(@AuthenticationPrincipal Jwt jwt){
     	String email = jwt.getClaimAsString("email");
     	log.info("Fetching the current user:{}",email);
@@ -77,7 +81,8 @@ private final UserService userService;
     }
     
     @GetMapping("/{userId}")
-    public ResponseEntity<ApiResponse<?>> getCurrentUser(@PathVariable Long userId){
+    @RateLimit(limit = 20, key = "getUserById")
+    public ResponseEntity<ApiResponse<?>> getUserByUserId(@PathVariable Long userId){
     
     	log.info("Fetching the user:{}",userId);
     	ApiResponse<UserResponse> response = userService.getUserById(userId);
@@ -85,6 +90,7 @@ private final UserService userService;
     }
     
     @GetMapping("/auth/{authId}")
+    @RateLimit(limit = 20, key = "getUserByAuthId")
     public ResponseEntity<ApiResponse<?>> getUserByAuthId(@PathVariable String authId){
     	
     	log.info("Fetching the user buy auth id: {}", authId);
@@ -94,6 +100,7 @@ private final UserService userService;
     }
     
     @GetMapping
+    @RateLimit(limit = 50, key = "getAllUsers")
     public ResponseEntity<ApiResponse<Page<UserResponse>>> getAllUsers(
     		@RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
@@ -110,6 +117,7 @@ private final UserService userService;
     }
     
     @GetMapping("/status/{status}")
+    @RateLimit(limit = 50, key = "getAllUsersByStatus")
     public ResponseEntity<ApiResponse<Page<UserResponse>>> getAllUsersByStatus(
     		@PathVariable UserStatus status,
     		@RequestParam(defaultValue = "0") int page,
@@ -129,6 +137,7 @@ private final UserService userService;
     //===================================UPDATE METHODS================================
     
     @PutMapping("/{userId}")
+    @RateLimit(limit = 10, key = "updateUserById")
     public ResponseEntity<ApiResponse<?>> updateUser(@PathVariable Long userId, 
     		@Valid @RequestBody UpdateUserRequest request){
     	log.info("Updating the details of user {}", userId);
@@ -138,6 +147,7 @@ private final UserService userService;
     }
     
     @PutMapping("/me")
+    @RateLimit(limit = 10, key = "updateCurrentUser")
     public ResponseEntity<ApiResponse<?>> updateCurrentUser(
     		@AuthenticationPrincipal Jwt jwt,
     		@Valid @RequestBody UpdateUserRequest request){
@@ -150,6 +160,7 @@ private final UserService userService;
     }
     
     @PutMapping("/{userId}/profile")
+    @RateLimit(limit = 10, key = "updateUserProfileById")
     public ResponseEntity<ApiResponse<?>> updateUserProfile(@PathVariable Long userId, @Valid @RequestBody UpdateProfileRequest request){
     	log.info("Updating profile of user {}", userId);
     	ApiResponse<UserResponse> response = userService.updateUserProfile(userId, request);
@@ -157,6 +168,7 @@ private final UserService userService;
     }
     
     @PutMapping("/me/profile")
+    @RateLimit(limit = 10, key = "updateCurrentUserProfile")
     public ResponseEntity<ApiResponse<?>> updateCurrentUserProfile(@AuthenticationPrincipal Jwt jwt,
     		@Valid @RequestBody UpdateProfileRequest request){
     	
@@ -170,6 +182,7 @@ private final UserService userService;
     // ==================================DELETE / DEACTIVATE ===========================
     
     @DeleteMapping("/{userId}")
+    @RateLimit(limit = 5, key = "deleteUser")
     public ResponseEntity<ApiResponse<?>> deleteUser(@PathVariable Long userId){
     	log.info("Deleting user {}", userId);
     	ApiResponse<Void> response = userService.deleteUser(userId);
@@ -177,6 +190,7 @@ private final UserService userService;
     }
     
     @DeleteMapping("/{userId}/deactivate")
+    @RateLimit(limit = 5, key = "deactivateUser")
     public ResponseEntity<ApiResponse<?>> deactivateUser(@PathVariable Long userId){
     	log.info("Deactivating user {}", userId);
     	ApiResponse<Void> response = userService.deactivateUser(userId);
@@ -184,6 +198,7 @@ private final UserService userService;
     }
     
     @DeleteMapping("/{userId}/activate")
+    @RateLimit(limit = 5, key = "activateUser")
     public ResponseEntity<ApiResponse<?>> activateUser(@PathVariable Long userId){
     	log.info("Activating user {}", userId);
     	ApiResponse<Void> response = userService.activateUser(userId);
@@ -194,6 +209,7 @@ private final UserService userService;
     //===================================OTHER METHDOS==================================
     
     @PostMapping("/resend-verification")
+    @RateLimit(limit = 10, key = "resendVerification")
     public ResponseEntity<ApiResponse<Void>> resendVerification(
             @RequestParam String email) {
         

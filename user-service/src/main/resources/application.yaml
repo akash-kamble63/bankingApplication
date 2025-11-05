@@ -2,9 +2,6 @@ server:
   port: 8090
 
 spring:
-  web:
-    resources:
-      add-mappings: true
   application:
     name: user-service
 
@@ -13,43 +10,27 @@ spring:
     username: postgres
     password: admin
     driver-class-name: org.postgresql.Driver
-  hikari:
-    maximum-pool-size: 10
-    minimum-idle: 5
-    connection-timeout: 30000
-    idle-timeout: 600000
-    max-lifetime: 1800000
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 30000
 
   jpa:
     hibernate:
-      ddl-auto: create-drop
+      ddl-auto: update  # Changed from create-drop
     show-sql: true
     database-platform: org.hibernate.dialect.PostgreSQLDialect
     properties:
-       hibernate:
-          format_sql: true
-          use_sql_comments: true
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          issuer-uri: http://localhost:8280/realms/banking-realm
-    task:
-       scheduling:
-          pool:
-             size: 5
-          thread-name-prefix: scheduled-
-       execution:
-         pool:
-            core-size: 5
-            maxsize: 10
-            queue-capacity: 100
+      hibernate:
+        format_sql: true
+        use_sql_comments: true
 
+  # Redis Configuration
   data:
     redis:
       host: localhost
       port: 6379
-      password: # Leave empty if no password
+      password: 
       timeout: 60000
       lettuce:
         pool:
@@ -57,7 +38,24 @@ spring:
           max-idle: 8
           min-idle: 2
           max-wait: -1ms
-        shutdown-timeout: 100ms
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:8280/realms/banking-realm
+
+  task:
+    scheduling:
+      pool:
+        size: 5
+      thread-name-prefix: scheduled-
+    execution:
+      pool:
+        core-size: 5
+        max-size: 10
+        queue-capacity: 100
+
 app:
   config:
     keycloak:
@@ -65,47 +63,81 @@ app:
       realm: banking-realm
       client-id: user-service
       client-secret: z5yklGXHMwS7ZJy9ZniGTGKG1HFp4ImV
+
+  # Rate Limiting Configuration
+  rate-limit:
+    enabled: true
+    default-limit: 100
+    endpoints:
+      login: 5
+      register: 3
+      forgot-password: 3
+      reset-password: 5
+
+  # Caching Configuration
+  cache:
+    enabled: true
+    ttl:
+      user-profile: 300  # 5 minutes
+      user-list: 60      # 1 minute
+      statistics: 600    # 10 minutes
+      notifications: 300 # 5 minutes
+
+  # Audit Logging Configuration
+  audit:
+    enabled: true
+    async: true
+    retention-days: 90
+
+  # Password Reset Configuration
+  password:
+    reset:
+      token-expiry-hours: 24
+      max-attempts: 3
+
+  # Notification Configuration
+  notifications:
+    email:
+      enabled: true
+    sms:
+      enabled: false
+    push:
+      enabled: true
+
   sync:
     verification:
-       cron: "0 */5 * * * ?"
-
-  webhook:
-     secret:
+      cron: "0 */5 * * * ?"
 
   codes:
     bad_request: 400
     conflict: 409
     success: 200
-    not_found: 404		
-  email:
-   verification:
-        enabled: true
-        resend-limit: 3
-        expiry-hourse: 1
-
-  password:
-    reset:
-      token-expiry-hours: 24  # Token valid for 24 hours
-      max-attempts: 3  # Max reset attempts per user
+    not_found: 404
 
 logging:
   level:
     com.user_service: DEBUG
     org.springframework.security: DEBUG
+    org.springframework.cache: DEBUG
     org.keycloak: INFO
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health,info,metrics,prometheus
   endpoint:
     health:
       show-details: always
+  prometheus:
+    metrics:
+      export:
+        enabled: true
 springdoc:
   api-docs:
-    path: /v3/api-docs    
+    path: /v3/api-docs
   swagger-ui:
-    path: /swagger-ui.html 
+    path: /swagger-ui.html
     disable-swagger-default-url: true

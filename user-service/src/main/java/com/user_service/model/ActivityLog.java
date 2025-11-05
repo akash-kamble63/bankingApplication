@@ -1,4 +1,4 @@
-package com.user_service.mapper;
+package com.user_service.model;
 
 import java.time.LocalDateTime;
 

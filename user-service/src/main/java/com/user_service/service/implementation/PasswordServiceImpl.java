@@ -8,15 +8,18 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.user_service.annotation.Auditable;
 import com.user_service.dto.ApiResponse;
 import com.user_service.dto.ChangePasswordRequest;
 import com.user_service.dto.ForgotPasswordRequest;
 import com.user_service.dto.ResetPasswordRequest;
+import com.user_service.enums.AuditAction;
 import com.user_service.exception.ResourceNotFoundException;
 import com.user_service.model.PasswordResetTokenRedis;
 import com.user_service.model.User;
 import com.user_service.repository.PasswordResetTokenRedisRepository;
 import com.user_service.repository.UserRepository;
+import com.user_service.service.AuditService;
 import com.user_service.service.KeycloakService;
 import com.user_service.service.PasswordService;
 
@@ -30,6 +33,7 @@ public class PasswordServiceImpl implements PasswordService {
 	private final UserRepository userRepository;
     private final PasswordResetTokenRedisRepository tokenRedisRepository;
     private final KeycloakService keycloakService;
+    private final AuditService auditService;
     
     @Value("${app.password.reset.token-expiry-hours:24}")
     private int tokenExpiryHours;
@@ -39,6 +43,7 @@ public class PasswordServiceImpl implements PasswordService {
     
     @Override
     @Transactional
+    @Auditable(action = AuditAction.PASSWORD_CHANGED, entityType = "PasswordResetToken")
     public ApiResponse<Void> changePassword(String email, ChangePasswordRequest request) {
         log.info("Processing password change request for user: {}", email);
         
@@ -66,11 +71,13 @@ public class PasswordServiceImpl implements PasswordService {
         keycloakService.changePassword(user.getAuthId(), request.getNewPassword());
         
         log.info("Password changed successfully for user: {}", email);
+        
         return ApiResponse.success("Password changed successfully");
     }
     
     @Override
     @Transactional
+    @Auditable(action = AuditAction.PASSWORD_RESET_COMPLETED, entityType = "PasswordResetToken")
     public ApiResponse<Void> forgotPassword(ForgotPasswordRequest request) {
         log.info("Processing forgot password request for: {}", request.getEmail());
         
@@ -136,12 +143,19 @@ public class PasswordServiceImpl implements PasswordService {
         } catch (Exception e) {
             log.warn("Failed to send Keycloak reset email: {}", e.getMessage());
         }
-        
+        auditService.logSuccess(
+	            AuditAction.PASSWORD_CHANGED,
+	            user.getId(),
+	            "PasswordResetToken",
+	            String.valueOf(user.getId()),
+	            request
+	        );
         return ApiResponse.success("Password reset link has been sent to your email");
     }
     
     @Override
     @Transactional
+    @Auditable(action = AuditAction.PASSWORD_RESET_COMPLETED, entityType = "PasswordResetToken")
     public ApiResponse<Void> resetPassword(ResetPasswordRequest request) {
         log.info("Processing password reset with token");
         
@@ -181,6 +195,13 @@ public class PasswordServiceImpl implements PasswordService {
         tokenRedisRepository.markAsUsed(request.getToken());
         
         log.info("Password reset successfully for user: {}", user.getEmail());
+        auditService.logSuccess(
+	            AuditAction.PASSWORD_RESET_COMPLETED,
+	            user.getId(),
+	            "PasswordResetToken",
+	            String.valueOf(user.getId()),
+	            request
+	        );
         return ApiResponse.success("Password has been reset successfully. You can now login with your new password");
     }
     
@@ -249,6 +270,7 @@ public class PasswordServiceImpl implements PasswordService {
             maxResetAttempts,
             token.isUsed()
         );
+        
         
         return ApiResponse.success(token.getToken(), info);
     }
