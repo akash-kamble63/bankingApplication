@@ -9,7 +9,6 @@ import org.hibernate.annotations.UpdateTimestamp;
 import com.account_service.enums.AccountHolderType;
 import com.account_service.enums.AccountStatus;
 import com.account_service.enums.AccountType;
-import com.account_service.enums.InterestFrequency;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -36,111 +35,93 @@ import lombok.NoArgsConstructor;
 		@Index(name = "idx_created_at", columnList = "created_at") // Add this for reporting
 })
 public class Account {
-	@Id
-	@GeneratedValue(strategy = GenerationType.IDENTITY)
-	private Long id;
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
 
-	@Column(name = "account_number", unique = true, nullable = false, length = 20)
-	private String accountNumber;
+    @Column(name = "account_number", unique = true, nullable = false, length = 16)
+    private String accountNumber; 
+    
+    @Column(name = "user_id", nullable = false)
+    private Long userId; 
+    
+    @Column(name = "user_email", nullable = false, length = 100)
+    private String userEmail; 
+    
 
-	@Column(name = "user_id", nullable = false)
-	private Long userId;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "account_type", nullable = false, length = 30)
+    private AccountType accountType;
+    
+    @Enumerated(EnumType.STRING)
+    @Column(name = "account_status", nullable = false, length = 20)
+    private AccountStatus status; 
+    
+    @Enumerated(EnumType.STRING)
+    @Column(name = "holder_type", nullable = false, length = 20)
+    private AccountHolderType holderType; 
+    
 
-	@Column(name = "user_email", nullable = false)
-	private String userEmail;
+    @Column(nullable = false, precision = 19, scale = 4)
+    private BigDecimal balance = BigDecimal.ZERO;
+    
+    @Column(name = "available_balance", nullable = false, precision = 19, scale = 4)
+    private BigDecimal availableBalance = BigDecimal.ZERO;
+    
+    @Column(name = "minimum_balance", precision = 19, scale = 4)
+    private BigDecimal minimumBalance = BigDecimal.ZERO;
+    
+    @Column(name = "overdraft_limit", precision = 19, scale = 4)
+    private BigDecimal overdraftLimit = BigDecimal.ZERO; 
+    
 
-	@Enumerated(EnumType.STRING)
-	@Column(name = "account_type", nullable = false)
-	private AccountType accountType;
+    @Column(length = 3, nullable = false)
+    private String currency = "INR";
+    
+    @Column(name = "branch_code", length = 10)
+    private String branchCode; 
+    
+    @Column(name = "ifsc_code", length = 11)
+    private String ifscCode; 
+    
 
-	@Column(nullable = false, precision = 15, scale = 2)
-	private BigDecimal balance = BigDecimal.ZERO;
+    @Column(name = "is_primary")
+    private Boolean isPrimary = false; 
+    
 
-	@Column(name = "available_balance", nullable = false, precision = 15, scale = 2)
-	private BigDecimal availableBalance = BigDecimal.ZERO;
+    @Column(name = "interest_rate", precision = 5, scale = 2)
+    private BigDecimal interestRate; // e.g., 4.5% = 4.50
+    
+    @Column(name = "maturity_date")
+    private LocalDateTime maturityDate; 
+    
 
-	@Column(precision = 15, scale = 2)
-	private BigDecimal overdraftLimit = BigDecimal.ZERO;
+    @Column(name = "frozen_reason", length = 500)
+    private String frozenReason;
+    
+    @Column(name = "closure_reason", length = 500)
+    private String closureReason;
+    
 
-	@Enumerated(EnumType.STRING)
-	@Column(nullable = false)
-	private AccountStatus status;
+    @Column(name = "created_by", length = 100)
+    private String createdBy; 
+    
+    @Column(name = "updated_by", length = 100)
+    private String updatedBy;
+    
+    @CreationTimestamp
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+    
+    @UpdateTimestamp
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+    
+    @Column(name = "closed_at")
+    private LocalDateTime closedAt;
+    
 
-	@Enumerated(EnumType.STRING)
-	@Column(name = "holder_type", nullable = false)
-	private AccountHolderType holderType;
-
-	@Enumerated(EnumType.STRING)
-	@Column(name = "interest_frequency")
-	private InterestFrequency interestFrequency;
-
-	@Column(length = 3, nullable = false)
-	private String currency = "INR";
-
-	@Column(name = "branch_code", length = 20)
-	private String branchCode;
-
-	@Column(name = "ifsc_code", length = 11)
-	private String ifscCode;
-
-	@Column(name = "is_primary")
-	private Boolean isPrimary = false;
-
-	@Column(name = "interest_rate", precision = 5, scale = 2)
-	private BigDecimal interestRate;
-
-	@Column(name = "maturity_date")
-	private LocalDateTime maturityDate;
-
-	@Column(name = "min_balance", precision = 15, scale = 2)
-	private BigDecimal minimumBalance = BigDecimal.ZERO;
-
-	// ADD THESE FIELDS:
-
-	@Column(name = "daily_transaction_limit", precision = 15, scale = 2)
-	private BigDecimal dailyTransactionLimit = new BigDecimal("100000"); // 1 lakh default
-
-	@Column(name = "daily_withdrawal_limit", precision = 15, scale = 2)
-	private BigDecimal dailyWithdrawalLimit = new BigDecimal("50000");
-
-	@Column(name = "monthly_transaction_limit", precision = 15, scale = 2)
-	private BigDecimal monthlyTransactionLimit = new BigDecimal("500000");
-
-	@Column(name = "total_credited", precision = 15, scale = 2)
-	private BigDecimal totalCredited = BigDecimal.ZERO; // Lifetime credits
-
-	@Column(name = "total_debited", precision = 15, scale = 2)
-	private BigDecimal totalDebited = BigDecimal.ZERO; // Lifetime debits
-
-	@Column(name = "transaction_count")
-	private Long transactionCount = 0L;
-
-	@Column(name = "frozen_reason", length = 500)
-	private String frozenReason; // Why account was frozen
-
-	@Column(name = "closure_reason", length = 500)
-	private String closureReason; // Why account was closed
-
-	@Column(name = "created_by")
-	private String createdBy; // Admin/System username
-
-	@Column(name = "updated_by")
-	private String updatedBy;
-
-	@Column(name = "last_transaction_date")
-	private LocalDateTime lastTransactionDate;
-
-	@CreationTimestamp
-	@Column(name = "created_at", nullable = false, updatable = false)
-	private LocalDateTime createdAt;
-
-	@UpdateTimestamp
-	@Column(name = "updated_at")
-	private LocalDateTime updatedAt;
-
-	@Column(name = "closed_at")
-	private LocalDateTime closedAt;
-
-	@Version
-	private Long version;
+    @Version
+    private Long version; 
 }
