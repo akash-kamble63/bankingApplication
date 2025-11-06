@@ -33,6 +33,13 @@ public class AuditController {
 
 	private final AuditService auditService;
 
+	private Long extractUserId(Jwt jwt) {
+	    String sub = jwt.getClaimAsString("sub");
+	    // If sub is UUID, you might need to look it up in database
+	    // Or use another claim like "user_id"
+	    return Long.parseLong(jwt.getClaimAsString("user_id"));
+	}
+	
 	/**
 	 * Get current user's audit logs
 	 */
@@ -40,7 +47,7 @@ public class AuditController {
 	public ResponseEntity<ApiResponse<Page<AuditLog>>> getMyAuditLogs(@AuthenticationPrincipal Jwt jwt,
 			@RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
 
-		Long userId = 1L; // Extract from JWT
+		Long userId = extractUserId(jwt); 
 		Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
 		Page<AuditLog> logs = auditService.getAuditLogsForUser(userId, pageable);
 

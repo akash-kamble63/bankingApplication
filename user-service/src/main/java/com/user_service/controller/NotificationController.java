@@ -26,13 +26,18 @@ public class NotificationController {
     
     private final NotificationService notificationService;
     
+    private Long extractUserId(Jwt jwt) {
+        String sub = jwt.getClaimAsString("sub");
+        return Long.parseLong(jwt.getClaimAsString("user_id"));
+    }
+    
     /**
      * Get current user's notification preferences
      */
     @GetMapping("/preferences")
     public ResponseEntity<ApiResponse<NotificationPreferences>> getPreferences(
             @AuthenticationPrincipal Jwt jwt) {
-        Long userId = 1L; // Extract from JWT
+        Long userId = extractUserId(jwt);
         ApiResponse<NotificationPreferences> response = notificationService.getPreferences(userId);
         return ResponseEntity.ok(response);
     }
@@ -44,7 +49,7 @@ public class NotificationController {
     public ResponseEntity<ApiResponse<NotificationPreferences>> updatePreferences(
             @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody NotificationPreferencesRequest request) {
-        Long userId = 1L; // Extract from JWT
+    	Long userId = extractUserId(jwt);
         ApiResponse<NotificationPreferences> response = 
             notificationService.updatePreferences(userId, request);
         return ResponseEntity.ok(response);

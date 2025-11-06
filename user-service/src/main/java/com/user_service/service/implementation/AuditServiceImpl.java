@@ -31,8 +31,8 @@ public class AuditServiceImpl implements AuditService {
     /**
      * Log audit event asynchronously
      */
-    @Async("webhookExecutor")
     @Transactional
+    @Async("auditExecutor")
     public void logAudit(AuditAction action, Long userId, String entityType, 
                         String entityId, Object details, String status) {
         try {

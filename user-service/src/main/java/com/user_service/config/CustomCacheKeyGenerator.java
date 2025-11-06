@@ -3,7 +3,8 @@ package com.user_service.config;
 import java.lang.reflect.Method;
 
 import org.springframework.cache.interceptor.KeyGenerator;
-
+import org.springframework.stereotype.Component;
+@Component("customCacheKeyGenerator")
 public class CustomCacheKeyGenerator implements KeyGenerator {
     
     @Override

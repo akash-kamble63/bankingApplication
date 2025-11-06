@@ -11,6 +11,7 @@ import com.user_service.model.Profile;
 import com.user_service.model.User;
 
 import jakarta.persistence.criteria.Join;
+import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 
 public class UserSpecification {
@@ -31,6 +32,11 @@ public class UserSpecification {
         return (root, query, criteriaBuilder) -> {
             List<Predicate> predicates = new ArrayList<>();
             
+            //to avoid n+1 queries
+            if (query != null) {
+                query.distinct(true);
+                root.fetch("profile", JoinType.LEFT);
+            }
             // Email filter (contains)
             if (email != null && !email.isEmpty()) {
                 predicates.add(criteriaBuilder.like(

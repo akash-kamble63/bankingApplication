@@ -143,13 +143,7 @@ public class PasswordServiceImpl implements PasswordService {
         } catch (Exception e) {
             log.warn("Failed to send Keycloak reset email: {}", e.getMessage());
         }
-        auditService.logSuccess(
-	            AuditAction.PASSWORD_CHANGED,
-	            user.getId(),
-	            "PasswordResetToken",
-	            String.valueOf(user.getId()),
-	            request
-	        );
+        
         return ApiResponse.success("Password reset link has been sent to your email");
     }
     
@@ -195,13 +189,7 @@ public class PasswordServiceImpl implements PasswordService {
         tokenRedisRepository.markAsUsed(request.getToken());
         
         log.info("Password reset successfully for user: {}", user.getEmail());
-        auditService.logSuccess(
-	            AuditAction.PASSWORD_RESET_COMPLETED,
-	            user.getId(),
-	            "PasswordResetToken",
-	            String.valueOf(user.getId()),
-	            request
-	        );
+       
         return ApiResponse.success("Password has been reset successfully. You can now login with your new password");
     }
     

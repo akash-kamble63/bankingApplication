@@ -3,6 +3,9 @@ package com.user_service.config;
 import java.io.IOException;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtDecoders;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -26,6 +29,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
 	private final RateLimitService rateLimitService;
     private final ObjectMapper objectMapper;
+    private final JwtDecoder jwtDecoder;
     
     @Override
     protected void doFilterInternal(
@@ -91,11 +95,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private String extractUserIdFromRequest(HttpServletRequest request) {
         String authHeader = request.getHeader("Authorization");
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            // Extract user ID from JWT token
-            // This is a simplified version - implement proper JWT parsing
             try {
-                // You can inject JwtDecoder and parse the token here
-                return null; // Replace with actual user ID extraction
+            	String token = authHeader.substring(7);
+            	Jwt jwt = jwtDecoder.decode(token);
+            	return jwt.getClaimAsString("sub");
             } catch (Exception e) {
                 log.debug("Failed to extract user ID from token");
             }
