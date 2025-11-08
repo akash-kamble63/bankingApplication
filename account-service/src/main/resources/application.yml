@@ -1,0 +1,229 @@
+server:
+  port: 8091
+
+spring:
+  application:
+    name: account-service
+
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration
+      - org.springframework.boot.autoconfigure.security.oauth2.resource.servlet.OAuth2ResourceServerAutoConfiguration
+      - org.springframework.boot.actuate.autoconfigure.security.servlet.ManagementWebSecurityAutoConfiguration
+
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: account-service-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.account_service.*"
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: 3
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/accountdb
+    username: postgres
+    password: admin
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    properties:
+      hibernate:
+        format_sql: true
+        use_sql_comments: true
+        jdbc:
+          batch_size: 20
+        order_inserts: true
+        order_updates: true
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password:
+      timeout: 60000
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 2
+          max-wait: -1ms
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:8280/realms/banking-realm
+
+  task:
+    scheduling:
+      pool:
+        size: 5
+      thread-name-prefix: scheduled-
+    execution:
+      pool:
+        core-size: 10
+        max-size: 20
+        queue-capacity: 100
+
+app:
+  config:
+    keycloak:
+      server-url: http://localhost:8280
+      realm: banking-realm
+      client-id: account-service
+      client-secret: your-client-secret
+
+  account:
+    number:
+      prefix: "ACC"
+      length: 16
+    minimum-balance:
+      savings: 1000.00
+      current: 5000.00
+      salary: 0.00
+      student: 500.00
+    overdraft-limit:
+      current: 50000.00
+      salary: 10000.00
+    interest-rate:
+      savings: 4.00
+      fixed-deposit: 6.50
+      recurring-deposit: 5.50
+    hold:
+      default-expiry-hours: 24
+      max-hold-days: 30
+
+  rate-limit:
+    enabled: true
+    default-limit: 100
+    endpoints:
+      create-account: 5
+      transfer: 10
+      check-balance: 50
+
+  cache:
+    enabled: true
+    ttl:
+      account: 300
+      balance: 60
+      beneficiary: 600
+      statistics: 1800
+
+  audit:
+    enabled: true
+    async: true
+    retention-days: 365
+
+  notifications:
+    email:
+      enabled: true
+    sms:
+      enabled: true
+    push:
+      enabled: true
+
+  snapshot:
+    enabled: true
+    schedule:
+      daily: "0 0 0 * * *"
+      monthly: "0 0 0 1 * *"
+      yearly: "0 0 0 1 1 *"
+
+logging:
+  level:
+    com.account_service: DEBUG
+    org.springframework.security: DEBUG
+    org.springframework.cache: DEBUG
+    org.hibernate.SQL: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: logs/account-service.log
+  logback:
+    rollingpolicy:
+      max-file-size: 10MB
+      max-history: 30
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+    zipkin:
+      tracing:
+        endpoint: http://localhost:9411/api/v2/spans
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    disable-swagger-default-url: true
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      userService:
+        register-health-indicator: true
+        sliding-window-size: 10
+        minimum-number-of-calls: 10
+        permitted-number-of-calls-in-half-open-state: 5
+        wait-duration-in-open-state: 30s
+        failure-rate-threshold: 50
+        slow-call-rate-threshold: 50
+        slow-call-duration-threshold: 5s
+      paymentService:
+        register-health-indicator: true
+        sliding-window-size: 10
+        failure-rate-threshold: 60
+      fraudService:
+        register-health-indicator: true
+        failure-rate-threshold: 40
+  
+  retry:
+    instances:
+      database:
+        max-attempts: 3
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+      externalApi:
+        max-attempts: 4
+        wait-duration: 2s
+      kafka:
+        max-attempts: 5
+        wait-duration: 1s
+
+  timelimiter:
+    instances:
+      default:
+        timeout-duration: 10s
+      fraudService:
+        timeout-duration: 5s

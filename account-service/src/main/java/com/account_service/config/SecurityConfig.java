@@ -1,57 +1,149 @@
 package com.account_service.config;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.config.Customizer;
+import org.springframework.core.convert.converter.Converter;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtDecoders;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.beans.factory.annotation.Value;
 
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity(prePostEnabled = true, securedEnabled = true)
 public class SecurityConfig {
 
-	@Bean
+    @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}")
+    private String issuerUri;
+
+    private static final String[] PUBLIC_ENDPOINTS = {
+        "/actuator/**",
+        "/v3/api-docs/**",
+        "/swagger-ui/**",
+        "/swagger-ui.html",
+        "/api/v1/accounts/public/**"
+    };
+
+    private static final String[] ADMIN_ENDPOINTS = {
+        "/api/v1/accounts/admin/**",
+        "/api/v1/audit/**"
+    };
+
+    @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
             .csrf(csrf -> csrf.disable())
-            .authorizeHttpRequests(auth -> auth
+            .sessionManagement(session -> 
+                session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            
+            .authorizeHttpRequests(authz -> authz
+                // Public endpoints - MUST BE FIRST AND MOST SPECIFIC
                 .requestMatchers(
-                    // Public endpoints - Account Management
-                    "/api/users/register",
-                    "/api/users/test",
-                    "/api/users/resend-verification",
-
-                    
-                    // Actuator
-                    "/actuator/health",
-
-                    // Swagger / OpenAPI endpoints (Springdoc 2.x)
-                    "/swagger-ui.html",
-                    "/swagger-ui/**",
+                    "/actuator/**",
                     "/v3/api-docs/**",
-                    "/v3/api-docs/swagger-config"
+                    "/swagger-ui/**",
+                    "/swagger-ui.html",
+                    "/swagger-resources/**",
+                    "/webjars/**",
+                    "/api/v1/accounts/public/**"
                 ).permitAll()
                 
-                // Admin only endpoints
-                .requestMatchers(
-                    "/api/users/{userId}/activate",
-                    "/api/users/{userId}/deactivate",
-                    "/api/users"
-                ).hasRole("ADMIN")
+                // Admin endpoints
+                .requestMatchers("/api/v1/accounts/admin/**").hasRole("ADMIN")
+                .requestMatchers("/api/v1/audit/**").hasRole("ADMIN")
                 
-                // Authenticated endpoints (requires valid JWT)
-                .requestMatchers(
-                    "/api/users/me",
-                    "/api/users/me/**",
-                    "/api/users/password/change"  // Change password requires auth
-                ).authenticated()
+                // Account endpoints
+                .requestMatchers("/api/v1/accounts/create").hasAnyRole("USER", "ADMIN")
+                .requestMatchers("/api/v1/accounts/{accountNumber}/close").hasRole("ADMIN")
+                .requestMatchers("/api/v1/accounts/{accountNumber}/freeze").hasRole("ADMIN")
+                .requestMatchers("/api/v1/accounts/**").hasAnyRole("USER", "ADMIN")
+                
+                // Beneficiary endpoints
+                .requestMatchers("/api/v1/beneficiaries/**").hasAnyRole("USER", "ADMIN")
+                
+                // Transaction endpoints
+                .requestMatchers("/api/v1/transactions/**").hasAnyRole("USER", "ADMIN")
                 
                 // All other endpoints require authentication
                 .anyRequest().authenticated()
             )
-            .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
+            
+            .oauth2ResourceServer(oauth2 -> oauth2
+                .jwt(jwt -> jwt
+                    .jwtAuthenticationConverter(jwtAuthenticationConverter())
+                )
+            );
 
         return http.build();
+    }
+
+    @Bean
+    public JwtDecoder jwtDecoder() {
+        return JwtDecoders.fromIssuerLocation(issuerUri);
+    }
+
+    /**
+     * Convert JWT claims to Spring Security authorities
+     * Extracts roles from Keycloak realm_access and resource_access
+     */
+    @Bean
+    public JwtAuthenticationConverter jwtAuthenticationConverter() {
+        JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
+        converter.setJwtGrantedAuthoritiesConverter(new KeycloakRoleConverter());
+        return converter;
+    }
+
+    /**
+     * Custom converter to extract Keycloak roles
+     */
+    public static class KeycloakRoleConverter implements Converter<Jwt, Collection<GrantedAuthority>> {
+        
+        @Override
+        public Collection<GrantedAuthority> convert(Jwt jwt) {
+            // Extract realm roles
+            Map<String, Object> realmAccess = jwt.getClaimAsMap("realm_access");
+            Collection<GrantedAuthority> authorities = extractRoles(realmAccess);
+            
+            // Extract client roles (resource_access)
+            Map<String, Object> resourceAccess = jwt.getClaimAsMap("resource_access");
+            if (resourceAccess != null) {
+                resourceAccess.values().forEach(resource -> {
+                    if (resource instanceof Map) {
+                        authorities.addAll(extractRoles((Map<String, Object>) resource));
+                    }
+                });
+            }
+            
+            log.debug("Extracted authorities: {}", authorities);
+            return authorities;
+        }
+        
+        private Collection<GrantedAuthority> extractRoles(Map<String, Object> access) {
+            if (access == null || !access.containsKey("roles")) {
+                return List.of();
+            }
+            
+            @SuppressWarnings("unchecked")
+            List<String> roles = (List<String>) access.get("roles");
+            
+            return roles.stream()
+                .map(role -> new SimpleGrantedAuthority("ROLE_" + role.toUpperCase()))
+                .collect(Collectors.toList());
+        }
     }
 }

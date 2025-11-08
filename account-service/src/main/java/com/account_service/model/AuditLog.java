@@ -23,12 +23,15 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Entity
-@Table(name = "audit_logs", indexes = {
-    @Index(name = "idx_user_id", columnList = "user_id"),
-    @Index(name = "idx_action", columnList = "action"),
-    @Index(name = "idx_created_at", columnList = "created_at"),
-    @Index(name = "idx_entity", columnList = "entity_type, entity_id")
-})
+@Table(
+	    name = "audit_logs",
+	    indexes = {
+	        @Index(name = "idx_audit_user_id", columnList = "user_id"),
+	        @Index(name = "idx_audit_action", columnList = "action"),
+	        @Index(name = "idx_audit_created_at", columnList = "created_at"),
+	        @Index(name = "idx_audit_entity", columnList = "entity_type, entity_id")
+	    }
+	)
 @Data
 @Builder
 @AllArgsConstructor

@@ -4,14 +4,24 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+
+
+@Entity
+@Table(name = "account_balance_snapshots", indexes = {
+    @Index(name = "idx_account_id", columnList = "account_id"),
+    @Index(name = "idx_snapshot_date", columnList = "snapshot_date")
+})
 @Data
 @Builder
 @AllArgsConstructor
