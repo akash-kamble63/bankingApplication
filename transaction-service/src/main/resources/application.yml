@@ -1,0 +1,93 @@
+server:
+  port: 8092
+
+spring:
+  application:
+    name: transaction-service
+
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: transaction-service-group
+      auto-offset-reset: earliest
+    producer:
+      acks: all
+      retries: 3
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/transactiondb
+    username: postgres
+    password: admin
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    properties:
+      hibernate:
+        format_sql: true
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 60000
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:8280/realms/banking-realm
+
+app:
+  transaction:
+    limits:
+      daily-withdrawal: 100000.00
+      daily-transfer: 200000.00
+      per-transaction: 50000.00
+    timeout-minutes: 5
+    
+  account-service:
+    url: http://localhost:8091
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      accountService:
+        register-health-indicator: true
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+  
+  retry:
+    instances:
+      database:
+        max-attempts: 3
+        wait-duration: 500ms
+
+logging:
+  level:
+    com.transaction_service: DEBUG
+    org.springframework.security: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
