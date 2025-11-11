@@ -6,8 +6,9 @@ spring:
     url: jdbc:postgresql://localhost:5432/transactiondb
     username: postgres
     password: admin
+    driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: 50      # ✅ Tuned for load
+      maximum-pool-size: 50
       minimum-idle: 10
       connection-timeout: 30000
       idle-timeout: 600000
@@ -15,17 +16,18 @@ spring:
       leak-detection-threshold: 60000
   
   jpa:
+    open-in-view: false
     hibernate:
-      ddl-auto: validate          # ✅ Use Flyway/Liquibase
+      ddl-auto: validate
+    show-sql: false
     properties:
       hibernate:
         jdbc:
-          batch_size: 50           # ✅ Batch inserts
+          batch_size: 50
           fetch_size: 100
         order_inserts: true
         order_updates: true
-        query:
-          in_clause_parameter_padding: true
+        format_sql: true
   
   data:
     redis:
@@ -34,23 +36,31 @@ spring:
       timeout: 60000
       lettuce:
         pool:
-          max-active: 20           # ✅ Connection pool
+          max-active: 20
           max-idle: 10
           min-idle: 5
   
   kafka:
+    listener:
+      ack-mode: MANUAL_IMMEDIATE
     bootstrap-servers: localhost:9092
-    producer:
-      acks: all                    # ✅ Durability
-      retries: 3
-      enable-idempotence: true     # ✅ Exactly-once semantics
-      batch-size: 16384
-      linger-ms: 10
-      compression-type: snappy
     consumer:
-      enable-auto-commit: false    # ✅ Manual commit
+      group-id: transaction-service-group
       auto-offset-reset: earliest
-      max-poll-records: 100
+      enable-auto-commit: false
+    producer:
+      acks: all
+      retries: 3
+      enable-idempotence: true
+  
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:8280/realms/banking-realm
+
+server:
+  port: 8092
 
 resilience4j:
   circuitbreaker:
@@ -59,12 +69,8 @@ resilience4j:
         register-health-indicator: true
         sliding-window-size: 100
         minimum-number-of-calls: 10
-        permitted-number-of-calls-in-half-open-state: 5
-        wait-duration-in-open-state: 30s
         failure-rate-threshold: 50
-        slow-call-rate-threshold: 50
-        slow-call-duration-threshold: 5s
-      
+        wait-duration-in-open-state: 30s
       fraudService:
         failure-rate-threshold: 40
         wait-duration-in-open-state: 60s
@@ -74,11 +80,9 @@ resilience4j:
       accountService:
         max-attempts: 3
         wait-duration: 1s
-        enable-exponential-backoff: true
-        exponential-backoff-multiplier: 2
-        retry-exceptions:
-          - org.springframework.web.client.ResourceAccessException
-          - java.net.SocketTimeoutException
+      fraudService:
+        max-attempts: 2
+        wait-duration: 500ms
   
   timelimiter:
     instances:
@@ -87,23 +91,22 @@ resilience4j:
       fraudService:
         timeout-duration: 3s
 
-  bulkhead:
-    instances:
-      accountService:
-        max-concurrent-calls: 50
-        max-wait-duration: 500ms
+logging:
+  level:
+    com.transaction_service: DEBUG
+    org.springframework.kafka: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 
-app:
-  transaction:
-    max-amount: 1000000.00
-    min-amount: 0.01
-    fee-percentage: 0.005
-    daily-limit: 100000.00
-  
-  saga:
-    timeout-seconds: 30
-    max-retries: 3
-  
-  fraud:
-    sync-check-timeout-ms: 100
-    async-analysis-enabled: true
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  prometheus:
+    metrics:
+      export:
+        enabled: true

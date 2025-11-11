@@ -9,13 +9,18 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.apache.kafka.common.errors.ResourceNotFoundException;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.transaction_service.DTOs.SagaResult;
+import com.transaction_service.DTOs.TransactionFilterRequest;
 import com.transaction_service.DTOs.TransactionResponse;
 import com.transaction_service.DTOs.TransactionSummaryResponse;
 import com.transaction_service.DTOs.TransferRequest;
@@ -30,6 +35,7 @@ import com.transaction_service.repository.TransactionSummaryProjection;
 import com.transaction_service.service.EventSourcingService;
 import com.transaction_service.service.OutboxService;
 import com.transaction_service.service.TransactionService;
+import com.transaction_service.specification.TransactionSpecification;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -42,7 +48,6 @@ public class TransactionServiceImpl implements TransactionService{
     private final TransactionSagaOrchestrator sagaOrchestrator;
     private final EventSourcingService eventSourcingService;
     private final OutboxService outboxService;
-    private final IdempotencyService idempotencyService;
     
     /**
      * Create transfer with ALL patterns:
@@ -197,4 +202,66 @@ public class TransactionServiceImpl implements TransactionService{
             "sourceAccountId", transaction.getSourceAccountId()
         );
     }
+    
+    
+    @Transactional(readOnly = true)
+    public TransactionResponse getTransactionByReference(String transactionReference) {
+        Transaction transaction = transactionRepository
+            .findByTransactionReference(transactionReference)
+            .orElseThrow(() -> new ResourceNotFoundException("Transaction not found"));
+        
+        return mapToResponse(transaction);
+    }
+    
+    @Transactional
+    public void cancelTransaction(String transactionReference, Long userId) {
+        Transaction transaction = transactionRepository
+            .findByTransactionReference(transactionReference)
+            .orElseThrow(() -> new ResourceNotFoundException("Transaction not found"));
+        
+        // Verify ownership
+        if (!transaction.getUserId().equals(userId)) {
+            throw new IllegalStateException("Cannot cancel another user's transaction");
+        }
+        
+        // Can only cancel pending transactions
+        if (transaction.getStatus() != TransactionStatus.INITIATED && 
+            transaction.getStatus() != TransactionStatus.FRAUD_CHECK_PENDING) {
+            throw new IllegalStateException("Cannot cancel transaction in status: " + transaction.getStatus());
+        }
+        
+        transaction.setStatus(TransactionStatus.CANCELLED);
+        transactionRepository.save(transaction);
+    }
+    
+    @Transactional(readOnly = true)
+    public Page<TransactionResponse> searchTransactions(TransactionFilterRequest filter) {
+        Specification<Transaction> spec = TransactionSpecification.filterTransactions(filter);
+        
+        Sort sort = filter.getSortDirection().equalsIgnoreCase("ASC")
+            ? Sort.by(filter.getSortBy()).ascending()
+            : Sort.by(filter.getSortBy()).descending();
+        
+        Pageable pageable = PageRequest.of(filter.getPage(), filter.getSize(), sort);
+        
+        Page<Transaction> transactions = transactionRepository.findAll(spec, pageable);
+        return transactions.map(this::mapToResponse);
+    }
+    
+    @Transactional
+    public void updateFraudStatus(String transactionReference, 
+                                 BigDecimal fraudScore, 
+                                 String fraudStatus) {
+        transactionRepository.findByTransactionReference(transactionReference)
+            .ifPresent(transaction -> {
+                transaction.setFraudScore(fraudScore);
+                transaction.setFraudStatus(fraudStatus);
+                transactionRepository.save(transaction);
+                
+                log.info("Updated fraud status for transaction: {} - Score: {}", 
+                    transactionReference, fraudScore);
+            });
+    }
+    
+
 }
