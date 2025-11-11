@@ -9,7 +9,6 @@ import org.springframework.context.annotation.Configuration;
 
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
-import io.github.bucket4j.Refill;
 import lombok.Data;
 
 @Configuration
@@ -40,4 +39,6 @@ public class RateLimitConfig {
     public int getEndpointLimit(String endpoint) {
         return endpoints.getOrDefault(endpoint, defaultLimit);
     }
+    
+ 
 }

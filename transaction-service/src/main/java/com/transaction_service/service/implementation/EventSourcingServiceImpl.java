@@ -3,7 +3,6 @@ package com.transaction_service.service.implementation;
 
 
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -14,7 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.transaction_service.entity.TransactionEventStore;
-import com.transaction_service.repository.TransactionEventStoreRepository;
+import com.transaction_service.repository.EventStoreRepository;
 import com.transaction_service.service.EventSourcingService;
 
 import lombok.RequiredArgsConstructor;
@@ -23,12 +22,10 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class EventSourcingServiceImpl implements EventSourcingService {
-    
-    private final TransactionEventStoreRepository eventStoreRepository;
+public class EventSourcingServiceImpl implements EventSourcingService{
+	private final EventStoreRepository eventStoreRepository;
     private final ObjectMapper objectMapper;
     
-    @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public void storeEvent(String aggregateId, String eventType, Object eventData, 
                           Long userId, String correlationId, String causationId) {
@@ -57,26 +54,11 @@ public class EventSourcingServiceImpl implements EventSourcingService {
                 .build();
             
             eventStoreRepository.save(event);
-            log.debug("Event stored: aggregateId={}, type={}, version={}", 
-                     aggregateId, eventType, version);
             
         } catch (Exception e) {
             log.error("Failed to store event: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to store event", e);
         }
-    }
-    
-    @Override
-    @Transactional(readOnly = true)
-    public List<TransactionEventStore> getTransactionEvents(String transactionReference) {
-        return eventStoreRepository.findByAggregateIdOrderByVersionAsc(transactionReference);
-    }
-    
-    @Override
-    @Transactional(readOnly = true)
-    public List<TransactionEventStore> getEventsFromVersion(String transactionReference, Long fromVersion) {
-        return eventStoreRepository.findByAggregateIdAndVersionGreaterThanEqualOrderByVersionAsc(
-            transactionReference, fromVersion);
     }
     
     private Long getNextVersion(String aggregateId) {

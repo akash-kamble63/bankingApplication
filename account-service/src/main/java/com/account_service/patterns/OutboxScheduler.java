@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.account_service.model.OutboxEvent;
+import com.account_service.model.OutboxEvent.OutboxStatus;
 import com.account_service.repository.OutboxRepository;
 import com.account_service.service.OutboxService;
 
@@ -78,6 +79,21 @@ public class OutboxScheduler {
         } catch (Exception e) {
             outboxService.markAsFailed(event.getId(), e.getMessage());
             log.error("Exception publishing event: id={}, error={}", event.getId(), e.getMessage(), e);
+        }
+    }
+    
+    @Scheduled(fixedDelay = 60000) // Every minute
+    public void monitorOutboxHealth() {
+        long pendingCount = outboxRepository.countByStatus(OutboxStatus.PENDING);
+        
+        if (pendingCount > 1000) { // Alert threshold
+            log.error("❌ CRITICAL: {} pending outbox events! Kafka may be down", pendingCount);
+
+        }
+        
+        long failedCount = outboxRepository.countByStatus(OutboxStatus.FAILED);
+        if (failedCount > 100) {
+            log.error("❌ CRITICAL: {} permanently failed events!", failedCount);
         }
     }
 }

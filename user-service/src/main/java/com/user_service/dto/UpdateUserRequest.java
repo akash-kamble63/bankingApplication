@@ -13,6 +13,7 @@ import lombok.NoArgsConstructor;
 @Builder
 public class UpdateUserRequest {
 	@Size(min = 2, max = 50, message = "First name must be between 2 and 50 characters")
+	 @Pattern(regexp = "^[a-zA-Z\\s]*$", message = "Name must contain only letters")
     private String firstName;
     
     @Size(min = 2, max = 50, message = "Last name must be between 2 and 50 characters")

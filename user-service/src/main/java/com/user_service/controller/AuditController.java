@@ -19,7 +19,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.user_service.dto.ApiResponse;
 import com.user_service.enums.AuditAction;
+import com.user_service.exception.UnauthorizedException;
 import com.user_service.model.AuditLog;
+import com.user_service.model.User;
+import com.user_service.repository.UserRepository;
 import com.user_service.service.AuditService;
 
 import lombok.RequiredArgsConstructor;
@@ -32,12 +35,18 @@ import lombok.extern.slf4j.Slf4j;
 public class AuditController {
 
 	private final AuditService auditService;
+	private final UserRepository userRepository;
 
 	private Long extractUserId(Jwt jwt) {
-	    String sub = jwt.getClaimAsString("sub");
-	    // If sub is UUID, you might need to look it up in database
-	    // Or use another claim like "user_id"
-	    return Long.parseLong(jwt.getClaimAsString("user_id"));
+		String userId = jwt.getClaimAsString("user_id");
+	    if (userId == null) {
+	        // Store UUID -> Long mapping in database
+	        String sub = jwt.getClaimAsString("sub");
+	        return userRepository.findByAuthId(sub)
+	            .map(User::getId)
+	            .orElseThrow(() -> new UnauthorizedException("Invalid user"));
+	    }
+	    return Long.parseLong(userId);
 	}
 	
 	/**

@@ -33,16 +33,21 @@ public class AuditAspect {
 
 	@AfterReturning(pointcut = "@annotation(auditable)", returning = "result")
 	public void auditSuccess(JoinPoint joinPoint, Auditable auditable, Object result) {
-		try {
-			Long userId = getCurrentUserId();
-			Object[] args = joinPoint.getArgs();
-
-			auditService.logSuccess(auditable.action(), userId, auditable.entityType(), extractEntityId(joinPoint),
-					result);
-
-		} catch (Exception e) {
-			log.error("Failed to create audit log for success: {}", e.getMessage(), e);
-		}
+	    try {
+	        Long userId = getCurrentUserId();
+	        String entityId = extractEntityId(joinPoint);
+	        
+	        // Call async audit service
+	        auditService.logSuccess(
+	            auditable.action(), 
+	            userId, 
+	            auditable.entityType(), 
+	            entityId,
+	            result
+	        );
+	    } catch (Exception e) {
+	        log.error("Failed to create audit log: {}", e.getMessage(), e);
+	    }
 	}
 
 	@AfterThrowing(pointcut = "@annotation(auditable)", throwing = "error")

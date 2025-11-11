@@ -34,6 +34,7 @@ public class CacheConfig {
 	        private long userList = 60;          // 1 minute
 	        private long statistics = 600;       // 10 minutes
 	        private long notifications = 300;    // 5 minutes
+	        private long passwordResetToken = 3600;
 	    }
 	    
 	    @Bean

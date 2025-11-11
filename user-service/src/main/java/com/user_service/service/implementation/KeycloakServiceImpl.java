@@ -28,6 +28,7 @@ public class KeycloakServiceImpl implements KeycloakService {
 	private final KeyCloakManager keyCloakManager;
 	private final KeyCloakProp keyclaCloakProp;
 	@Override
+	
 	public Integer createUser(UserRepresentation userRepresentation) {
 		log.info("Creating user in Keycloak: {}", userRepresentation.getEmail());
 

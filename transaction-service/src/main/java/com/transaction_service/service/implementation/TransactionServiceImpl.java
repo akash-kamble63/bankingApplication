@@ -1,41 +1,35 @@
 package com.transaction_service.service.implementation;
 
+
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.client.RestTemplate;
 
-import com.transaction_service.DTO.AccountResponse;
-import com.transaction_service.DTO.BillPaymentRequest;
-import com.transaction_service.DTO.DepositRequest;
-import com.transaction_service.DTO.TransactionFilterRequest;
-import com.transaction_service.DTO.TransactionResponse;
-import com.transaction_service.DTO.TransactionSummaryResponse;
-import com.transaction_service.DTO.TransferRequest;
-import com.transaction_service.DTO.WithdrawalRequest;
+import com.transaction_service.DTOs.SagaResult;
+import com.transaction_service.DTOs.TransactionResponse;
+import com.transaction_service.DTOs.TransactionSummaryResponse;
+import com.transaction_service.DTOs.TransferRequest;
+import com.transaction_service.DTOs.TransferSagaData;
+import com.transaction_service.annotation.DistributedLock;
 import com.transaction_service.entity.Transaction;
-import com.transaction_service.enums.AuditAction;
-import com.transaction_service.enums.TransactionChannel;
 import com.transaction_service.enums.TransactionStatus;
 import com.transaction_service.enums.TransactionType;
-import com.transaction_service.event.TransactionCompletedEvent;
-import com.transaction_service.exceptions.ResourceNotFoundException;
+import com.transaction_service.patterns.TransactionSagaOrchestrator;
 import com.transaction_service.repository.TransactionRepository;
-import com.transaction_service.service.AuditService;
+import com.transaction_service.repository.TransactionSummaryProjection;
 import com.transaction_service.service.EventSourcingService;
 import com.transaction_service.service.OutboxService;
-import com.transaction_service.service.TransactionLimitService;
 import com.transaction_service.service.TransactionService;
-import com.transaction_service.specification.TransactionSpecification;
-
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -45,343 +39,162 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class TransactionServiceImpl implements TransactionService{
 	private final TransactionRepository transactionRepository;
+    private final TransactionSagaOrchestrator sagaOrchestrator;
     private final EventSourcingService eventSourcingService;
     private final OutboxService outboxService;
-    private final AuditService auditService;
-    private final TransactionLimitService limitService;
-    private final RestTemplate restTemplate;
+    private final IdempotencyService idempotencyService;
     
-    private static final String ACCOUNT_SERVICE_URL = "http://localhost:8091/api/v1/accounts";
-    
-    @Override
+    /**
+     * Create transfer with ALL patterns:
+     * - Distributed Lock (prevents concurrent overdraw)
+     * - Idempotency (prevents duplicate submissions)
+     * - Saga (distributed transaction with rollback)
+     * - Event Sourcing (audit trail)
+     * - Outbox (reliable event publishing)
+     */
     @Transactional
-    public TransactionResponse deposit(DepositRequest request, String initiatedBy) {
-        log.info("Processing deposit: account={}, amount={}", 
-                 request.getAccountNumber(), request.getAmount());
+    @DistributedLock(key = "transfer:#{#request.sourceAccountId}")
+    public TransactionResponse createTransfer(TransferRequest request, Long userId) {
+        log.info("Creating transfer: {} -> {}", 
+            request.getSourceAccountId(), request.getDestinationAccountId());
         
-        // Validate account
-        AccountResponse account = getAccountDetails(request.getAccountNumber());
-        if (!"ACTIVE".equals(account.getStatus())) {
-            throw new IllegalStateException("Account is not active");
+        // 1. Idempotency check
+        if (request.getIdempotencyKey() != null) {
+            Optional<Transaction> existing = transactionRepository
+                .findByIdempotencyKey(request.getIdempotencyKey());
+            
+            if (existing.isPresent()) {
+                log.info("Duplicate request detected, returning cached response");
+                return mapToResponse(existing.get());
+            }
         }
         
-        // Create transaction
+        // 2. Generate unique transaction reference (database sequence)
         String txnRef = generateTransactionReference();
+        
+        // 3. Create transaction (INITIATED)
         Transaction transaction = Transaction.builder()
-                .transactionReference(txnRef)
-                .accountNumber(request.getAccountNumber())
-                .userId(account.getUserId())
-                .transactionType(TransactionType.DEPOSIT)
-                .status(TransactionStatus.INITIATED)
-                .amount(request.getAmount())
-                .currency("INR")
-                .description(request.getDescription())
-                .paymentMethod(request.getPaymentMethod())
-                .openingBalance(account.getBalance())
-                .channel(TransactionChannel.WEB.name())
-                .initiatedAt(LocalDateTime.now())
-                .build();
+            .transactionReference(txnRef)
+            .idempotencyKey(request.getIdempotencyKey())
+            .userId(userId)
+            .sourceAccountId(request.getSourceAccountId())
+            .destinationAccountId(request.getDestinationAccountId())
+            .amount(request.getAmount())
+            .feeAmount(calculateFee(request.getAmount()))
+            .currency(request.getCurrency())
+            .status(TransactionStatus.INITIATED)
+            .type(TransactionType.TRANSFER)
+            .description(request.getDescription())
+            .correlationId(UUID.randomUUID().toString())
+            .processedBy("SYSTEM")
+            .build();
         
         transaction = transactionRepository.save(transaction);
         
-        try {
-            // Call Account Service to credit
-            creditAccount(request.getAccountNumber(), request.getAmount(), txnRef);
-            
-            // Update transaction
-            transaction.setStatus(TransactionStatus.SUCCESS);
-            transaction.setClosingBalance(account.getBalance().add(request.getAmount()));
+        // 4. Store event (Event Sourcing)
+        eventSourcingService.storeEvent(
+            txnRef,
+            "TransactionInitiated",
+            buildInitiatedEvent(transaction),
+            userId,
+            transaction.getCorrelationId(),
+            null
+        );
+        
+        // 5. Execute Saga
+        TransferSagaData sagaData = TransferSagaData.builder()
+            .transactionReference(txnRef)
+            .sourceAccountId(request.getSourceAccountId())
+            .destinationAccountId(request.getDestinationAccountId())
+            .amount(request.getAmount())
+            .currency(request.getCurrency())
+            .userId(userId)
+            .build();
+        
+        SagaResult sagaResult = sagaOrchestrator.executeTransferSaga(sagaData);
+        
+        // 6. Update transaction status
+        if (sagaResult.isSuccess()) {
+            transaction.setStatus(TransactionStatus.COMPLETED);
             transaction.setCompletedAt(LocalDateTime.now());
-            transaction = transactionRepository.save(transaction);
-            
-            // Store event
-            TransactionCompletedEvent event = buildCompletedEvent(transaction);
-            eventSourcingService.storeEvent(txnRef, "TransactionCompleted", event, 
-                                          account.getUserId(), UUID.randomUUID().toString(), null);
-            
-            // Publish to Kafka via Outbox
-            outboxService.saveEvent("TRANSACTION", txnRef, "TransactionCompleted", 
-                                   "banking.transaction.completed", event);
-            
-            // Audit
-            auditService.logSuccess(AuditAction.TRANSACTION_COMPLETED, account.getUserId(), 
-                                   "TRANSACTION", txnRef, request);
-            
-            log.info("Deposit successful: {}", txnRef);
-            return mapToResponse(transaction);
-            
-        } catch (Exception e) {
-            log.error("Deposit failed: {}", e.getMessage(), e);
+        } else {
             transaction.setStatus(TransactionStatus.FAILED);
-            transaction.setFailureReason(e.getMessage());
-            transactionRepository.save(transaction);
-            
-            auditService.logFailure(AuditAction.TRANSACTION_FAILED, account.getUserId(), 
-                                   "TRANSACTION", txnRef, request, e.getMessage());
-            
-            throw new RuntimeException("Deposit failed: " + e.getMessage(), e);
+            transaction.setFailureReason(sagaResult.getErrorMessage());
         }
-    }
-    
-    @Override
-    @Transactional
-    public TransactionResponse withdraw(WithdrawalRequest request, String initiatedBy) {
-        log.info("Processing withdrawal: account={}, amount={}", 
-                 request.getAccountNumber(), request.getAmount());
-        
-        AccountResponse account = getAccountDetails(request.getAccountNumber());
-        
-        // Validate sufficient balance
-        if (account.getAvailableBalance().compareTo(request.getAmount()) < 0) {
-            throw new IllegalStateException("Insufficient balance");
-        }
-        
-        // Check limits
-        limitService.checkLimit(account.getUserId(), request.getAccountNumber(), 
-                               TransactionType.WITHDRAWAL, request.getAmount());
-        
-        String txnRef = generateTransactionReference();
-        Transaction transaction = Transaction.builder()
-                .transactionReference(txnRef)
-                .accountNumber(request.getAccountNumber())
-                .userId(account.getUserId())
-                .transactionType(TransactionType.WITHDRAWAL)
-                .status(TransactionStatus.INITIATED)
-                .amount(request.getAmount())
-                .currency("INR")
-                .description(request.getDescription())
-                .paymentMethod(request.getPaymentMethod())
-                .location(request.getLocation())
-                .openingBalance(account.getBalance())
-                .channel(TransactionChannel.WEB.name())
-                .initiatedAt(LocalDateTime.now())
-                .build();
         
         transaction = transactionRepository.save(transaction);
         
-        try {
-            // Debit account
-            debitAccount(request.getAccountNumber(), request.getAmount(), txnRef);
-            
-            // Update transaction
-            transaction.setStatus(TransactionStatus.SUCCESS);
-            transaction.setClosingBalance(account.getBalance().subtract(request.getAmount()));
-            transaction.setCompletedAt(LocalDateTime.now());
-            transaction = transactionRepository.save(transaction);
-            
-            // Update limits
-            limitService.updateLimit(account.getUserId(), request.getAccountNumber(), 
-                                    TransactionType.WITHDRAWAL, request.getAmount());
-            
-            // Events and audit
-            TransactionCompletedEvent event = buildCompletedEvent(transaction);
-            eventSourcingService.storeEvent(txnRef, "TransactionCompleted", event, 
-                                          account.getUserId(), UUID.randomUUID().toString(), null);
-            outboxService.saveEvent("TRANSACTION", txnRef, "TransactionCompleted", 
-                                   "banking.transaction.completed", event);
-            
-            log.info("Withdrawal successful: {}", txnRef);
-            return mapToResponse(transaction);
-            
-        } catch (Exception e) {
-            log.error("Withdrawal failed: {}", e.getMessage(), e);
-            transaction.setStatus(TransactionStatus.FAILED);
-            transaction.setFailureReason(e.getMessage());
-            transactionRepository.save(transaction);
-            throw new RuntimeException("Withdrawal failed: " + e.getMessage(), e);
-        }
-    }
-    
-    @Override
-    @Transactional
-    public TransactionResponse transfer(TransferRequest request, String initiatedBy) {
-        log.info("Processing transfer: from={}, to={}, amount={}", 
-                 request.getFromAccount(), request.getToAccount(), request.getAmount());
+        // 7. Publish to outbox
+        outboxService.saveEvent(
+            "TRANSACTION",
+            txnRef,
+            sagaResult.isSuccess() ? "TransactionCompleted" : "TransactionFailed",
+            "banking.transaction.status",
+            transaction
+        );
         
-        // This will trigger SAGA orchestration for distributed transfer
-        // For now, simplified version
-        
-        AccountResponse fromAccount = getAccountDetails(request.getFromAccount());
-        AccountResponse toAccount = getAccountDetails(request.getToAccount());
-        
-        // Validate balances
-        if (fromAccount.getAvailableBalance().compareTo(request.getAmount()) < 0) {
-            throw new IllegalStateException("Insufficient balance");
-        }
-        
-        String txnRef = generateTransactionReference();
-        Transaction transaction = Transaction.builder()
-                .transactionReference(txnRef)
-                .accountNumber(request.getFromAccount())
-                .userId(fromAccount.getUserId())
-                .transactionType(TransactionType.TRANSFER)
-                .status(TransactionStatus.INITIATED)
-                .amount(request.getAmount())
-                .currency("INR")
-                .fromAccount(request.getFromAccount())
-                .toAccount(request.getToAccount())
-                .description(request.getDescription())
-                .paymentMethod(request.getPaymentMethod())
-                .upiId(request.getUpiId())
-                .openingBalance(fromAccount.getBalance())
-                .channel(TransactionChannel.WEB.name())
-                .initiatedAt(LocalDateTime.now())
-                .build();
-        
-        transaction = transactionRepository.save(transaction);
-        
-        try {
-            // Debit from source
-            debitAccount(request.getFromAccount(), request.getAmount(), txnRef);
-            
-            // Credit to destination
-            creditAccount(request.getToAccount(), request.getAmount(), txnRef);
-            
-            // Update transaction
-            transaction.setStatus(TransactionStatus.SUCCESS);
-            transaction.setClosingBalance(fromAccount.getBalance().subtract(request.getAmount()));
-            transaction.setCompletedAt(LocalDateTime.now());
-            transaction = transactionRepository.save(transaction);
-            
-            // Events
-            TransactionCompletedEvent event = buildCompletedEvent(transaction);
-            eventSourcingService.storeEvent(txnRef, "TransactionCompleted", event, 
-                                          fromAccount.getUserId(), UUID.randomUUID().toString(), null);
-            outboxService.saveEvent("TRANSACTION", txnRef, "TransactionCompleted", 
-                                   "banking.transaction.completed", event);
-            
-            log.info("Transfer successful: {}", txnRef);
-            return mapToResponse(transaction);
-            
-        } catch (Exception e) {
-            log.error("Transfer failed: {}", e.getMessage(), e);
-            transaction.setStatus(TransactionStatus.FAILED);
-            transaction.setFailureReason(e.getMessage());
-            transactionRepository.save(transaction);
-            throw new RuntimeException("Transfer failed: " + e.getMessage(), e);
-        }
-    }
-    
-    @Override
-    @Transactional(readOnly = true)
-    public TransactionResponse getTransaction(String transactionReference) {
-        Transaction transaction = transactionRepository.findByTransactionReference(transactionReference)
-                .orElseThrow(() -> new ResourceNotFoundException("Transaction not found"));
+        log.info("Transfer created: {} - Status: {}", txnRef, transaction.getStatus());
         return mapToResponse(transaction);
     }
     
-    @Override
+    /**
+     * Get user transactions 
+     */
     @Transactional(readOnly = true)
-    public Page<TransactionResponse> filterTransactions(TransactionFilterRequest filter) {
-        Specification<Transaction> spec = TransactionSpecification.filterTransactions(filter);
-        Pageable pageable = PageRequest.of(filter.getPage(), filter.getSize(), 
-                                          Sort.by(Sort.Direction.fromString(filter.getSortDirection()), 
-                                                 filter.getSortBy()));
+    @Cacheable(value = "userTransactions", key = "#userId + '-' + #pageable.pageNumber")
+    public Page<TransactionResponse> getUserTransactions(Long userId, Pageable pageable) {
+        Page<Transaction> transactions = transactionRepository
+            .findByUserId(userId, pageable);
         
-        return transactionRepository.findAll(spec, pageable).map(this::mapToResponse);
+        return transactions.map(this::mapToResponse);
+    }
+    
+    /**
+     * Get transaction summary 
+     */
+    @Transactional(readOnly = true)
+    public TransactionSummaryResponse getUserSummary(Long userId, LocalDate date) {
+        LocalDateTime start = date.atStartOfDay();
+        LocalDateTime end = date.plusDays(1).atStartOfDay();
+        
+        // ✅ Single aggregate query (no loops, no N+1)
+        TransactionSummaryProjection summary = transactionRepository
+            .getUserTransactionSummary(userId, "COMPLETED", start, end);
+        
+        return TransactionSummaryResponse.builder()
+            .totalTransactions(summary.getTotalCount())
+            .totalAmount(summary.getTotalAmount())
+            .totalFees(summary.getTotalFees())
+            .build();
     }
     
     // Helper methods
-    private AccountResponse getAccountDetails(String accountNumber) {
-        try {
-            String url = ACCOUNT_SERVICE_URL + "/" + accountNumber;
-            return restTemplate.getForObject(url, AccountResponse.class);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to fetch account details", e);
-        }
-    }
-    
-    private void creditAccount(String accountNumber, BigDecimal amount, String txnRef) {
-        String url = ACCOUNT_SERVICE_URL + "/" + accountNumber + "/credit" +
-                    "?amount=" + amount + "&reason=Transaction&transactionRef=" + txnRef;
-        restTemplate.postForObject(url, null, Void.class);
-    }
-    
-    private void debitAccount(String accountNumber, BigDecimal amount, String txnRef) {
-        String url = ACCOUNT_SERVICE_URL + "/" + accountNumber + "/debit" +
-                    "?amount=" + amount + "&reason=Transaction&transactionRef=" + txnRef;
-        restTemplate.postForObject(url, null, Void.class);
-    }
-    
     private String generateTransactionReference() {
-        return "TXN-" + UUID.randomUUID().toString();
+        // Use PostgreSQL sequence for guaranteed uniqueness
+        return "TXN" + System.currentTimeMillis() + UUID.randomUUID().toString().substring(0, 8);
     }
     
-    private TransactionCompletedEvent buildCompletedEvent(Transaction txn) {
-        return TransactionCompletedEvent.builder()
-                .transactionReference(txn.getTransactionReference())
-                .userId(txn.getUserId())
-                .accountNumber(txn.getAccountNumber())
-                .transactionType(txn.getTransactionType().name())
-                .amount(txn.getAmount())
-                .status(txn.getStatus().name())
-                .timestamp(LocalDateTime.now())
-                .build();
+    private BigDecimal calculateFee(BigDecimal amount) {
+        // 0.5% fee
+        return amount.multiply(new BigDecimal("0.005")).setScale(2, RoundingMode.HALF_UP);
     }
     
-    private TransactionResponse mapToResponse(Transaction txn) {
+    private TransactionResponse mapToResponse(Transaction t) {
         return TransactionResponse.builder()
-                .id(txn.getId())
-                .transactionReference(txn.getTransactionReference())
-                .accountNumber(txn.getAccountNumber())
-                .userId(txn.getUserId())
-                .transactionType(txn.getTransactionType().name())
-                .status(txn.getStatus().name())
-                .amount(txn.getAmount())
-                .currency(txn.getCurrency())
-                .fromAccount(txn.getFromAccount())
-                .toAccount(txn.getToAccount())
-                .openingBalance(txn.getOpeningBalance())
-                .closingBalance(txn.getClosingBalance())
-                .description(txn.getDescription())
-                .paymentMethod(txn.getPaymentMethod())
-                .bankReference(txn.getBankReference())
-                .fee(txn.getFee())
-                .totalAmount(txn.getTotalAmount())
-                .channel(txn.getChannel())
-                .failureReason(txn.getFailureReason())
-                .createdAt(txn.getCreatedAt())
-                .completedAt(txn.getCompletedAt())
-                .build();
+            .id(t.getId())
+            .transactionReference(t.getTransactionReference())
+            .amount(t.getAmount())
+            .feeAmount(t.getFeeAmount())
+            .status(t.getStatus())
+            .createdAt(t.getCreatedAt())
+            .build();
     }
-
-    @Override
-    public TransactionResponse billPayment(BillPaymentRequest request, String initiatedBy) {
-        // Implementation similar to withdrawal
-        throw new UnsupportedOperationException("Not implemented yet");
-    }
-
-    @Override
-    public Page<TransactionResponse> getUserTransactions(Long userId, Pageable pageable) {
-        return transactionRepository.findByUserId(userId, pageable).map(this::mapToResponse);
-    }
-
-    @Override
-    public Page<TransactionResponse> getAccountTransactions(String accountNumber, Pageable pageable) {
-        return transactionRepository.findByAccountNumber(accountNumber, pageable)
-                .map(this::mapToResponse);
-    }
-
-    @Override
-    public TransactionSummaryResponse getAccountSummary(String accountNumber, 
-                                                        LocalDateTime start, LocalDateTime end) {
-        // Implement summary calculations
-        throw new UnsupportedOperationException("Not implemented yet");
-    }
-
-    @Override
-    public TransactionSummaryResponse getUserSummary(Long userId, 
-                                                     LocalDateTime start, LocalDateTime end) {
-        throw new UnsupportedOperationException("Not implemented yet");
-    }
-
-    @Override
-    public TransactionResponse cancelTransaction(String transactionReference, String reason) {
-        throw new UnsupportedOperationException("Not implemented yet");
-    }
-
-    @Override
-    public TransactionResponse reverseTransaction(String transactionReference, String reason) {
-        throw new UnsupportedOperationException("Not implemented yet");
+    
+    private Object buildInitiatedEvent(Transaction transaction) {
+        return Map.of(
+            "transactionReference", transaction.getTransactionReference(),
+            "amount", transaction.getAmount(),
+            "sourceAccountId", transaction.getSourceAccountId()
+        );
     }
 }

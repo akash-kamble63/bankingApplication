@@ -1,5 +1,8 @@
 package com.user_service.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.user_service.annotation.ValidPassword;
+
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
@@ -43,5 +46,7 @@ public class CreateUserRequest {
         regexp = "^(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z])(?=.*[@#$%^&+=!]).*$",
         message = "Password must contain at least one digit, one lowercase, one uppercase, and one special character"
     )
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+    @ValidPassword 
     private String password;
 }

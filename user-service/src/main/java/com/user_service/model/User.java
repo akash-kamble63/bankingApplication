@@ -20,6 +20,7 @@ import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -31,7 +32,9 @@ import lombok.NoArgsConstructor;
     @Index(name = "idx_email", columnList = "email"),
     @Index(name = "idx_auth_id", columnList = "auth_id"),
     @Index(name = "idx_status", columnList = "status")
-})
+}, uniqueConstraints = {
+	    @UniqueConstraint(columnNames = "email")
+	})
 @Data
 @Builder
 @AllArgsConstructor

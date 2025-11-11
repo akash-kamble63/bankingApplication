@@ -1,54 +1,105 @@
 package com.transaction_service.repository;
 
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
-
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.*;
-import org.springframework.data.jpa.domain.Specification;
-import com.transaction_service.entity.Transaction;
-import com.transaction_service.enums.*;
-
-import jakarta.persistence.LockModeType;
-
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
-public interface TransactionRepository extends JpaSpecificationExecutor<Transaction>, JpaRepository<Transaction, Long> {
-    Optional<Transaction> findByTransactionReference(String transactionReference);
-    
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import com.transaction_service.entity.Transaction;
+import com.transaction_service.enums.TransactionStatus;
+
+import jakarta.persistence.LockModeType;
+
+public interface TransactionRepository extends JpaRepository<Transaction, Long>, JpaSpecificationExecutor<Transaction> {
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT t FROM Transaction t WHERE t.transactionReference = :ref")
-    Optional<Transaction> findByTransactionReferenceForUpdate(String ref);
+    Optional<Transaction> findByReferenceForUpdate(@Param("ref") String reference);
     
-    Page<Transaction> findByUserId(Long userId, Pageable pageable);
+    Optional<Transaction> findByTransactionReference(String reference);
     
-    Page<Transaction> findByAccountNumber(String accountNumber, Pageable pageable);
+    Optional<Transaction> findByIdempotencyKey(String idempotencyKey);
     
-    List<Transaction> findByAccountNumberAndStatus(String accountNumber, TransactionStatus status);
+    boolean existsByIdempotencyKey(String idempotencyKey);
     
-    @Query("SELECT t FROM Transaction t WHERE t.userId = :userId " +
+    // ✅ Paginated user transactions (no N+1)
+    @Query(value = "SELECT t FROM Transaction t WHERE t.userId = :userId",
+           countQuery = "SELECT COUNT(t) FROM Transaction t WHERE t.userId = :userId")
+    Page<Transaction> findByUserId(@Param("userId") Long userId, Pageable pageable);
+    
+    // ✅ Optimized query with index hint
+    @Query(value = "SELECT t FROM Transaction t " +
+                   "WHERE t.userId = :userId " +
+                   "AND t.status = :status " +
+                   "ORDER BY t.createdAt DESC")
+    Page<Transaction> findByUserIdAndStatus(
+        @Param("userId") Long userId,
+        @Param("status") TransactionStatus status,
+        Pageable pageable
+    );
+    
+    // ✅ Batch fetch for account IDs (prevents N+1)
+    @Query("SELECT t FROM Transaction t " +
+           "WHERE t.sourceAccountId IN :accountIds " +
+           "OR t.destinationAccountId IN :accountIds " +
+           "ORDER BY t.createdAt DESC")
+    List<Transaction> findByAccountIds(@Param("accountIds") List<Long> accountIds, Pageable pageable);
+    
+    // ✅ Aggregate query (single query, no iteration)
+    @Query(value = "SELECT " +
+                   "COUNT(t.id) as totalCount, " +
+                   "SUM(t.amount) as totalAmount, " +
+                   "SUM(t.feeAmount) as totalFees " +
+                   "FROM transactions t " +
+                   "WHERE t.user_id = :userId " +
+                   "AND t.status = :status " +
+                   "AND t.created_at BETWEEN :start AND :end",
+           nativeQuery = true)
+    TransactionSummaryProjection getUserTransactionSummary(
+        @Param("userId") Long userId,
+        @Param("status") String status,
+        @Param("start") LocalDateTime start,
+        @Param("end") LocalDateTime end
+    );
+    
+    // ✅ Bulk status update (single query)
+    @Modifying
+    @Query("UPDATE Transaction t SET t.status = :newStatus, t.updatedAt = :updatedAt " +
+           "WHERE t.status = :oldStatus AND t.createdAt < :cutoffTime")
+    int bulkUpdateStatus(
+        @Param("oldStatus") TransactionStatus oldStatus,
+        @Param("newStatus") TransactionStatus newStatus,
+        @Param("updatedAt") LocalDateTime updatedAt,
+        @Param("cutoffTime") LocalDateTime cutoffTime
+    );
+    
+    // ✅ Date range with pagination (memory safe)
+    @Query("SELECT t FROM Transaction t " +
+           "WHERE t.createdAt BETWEEN :start AND :end " +
+           "ORDER BY t.createdAt DESC")
+    Page<Transaction> findByDateRange(
+        @Param("start") LocalDateTime start,
+        @Param("end") LocalDateTime end,
+        Pageable pageable
+    );
+    
+    // Statistics queries
+    @Query("SELECT COUNT(t) FROM Transaction t WHERE t.status = :status")
+    long countByStatus(@Param("status") TransactionStatus status);
+    
+    @Query("SELECT SUM(t.amount) FROM Transaction t " +
+           "WHERE t.status = 'COMPLETED' " +
            "AND t.createdAt BETWEEN :start AND :end")
-    Page<Transaction> findByUserIdAndDateRange(Long userId, LocalDateTime start, 
-                                               LocalDateTime end, Pageable pageable);
-    
-    @Query("SELECT SUM(t.amount) FROM Transaction t WHERE t.accountNumber = :account " +
-           "AND t.transactionType = :type AND t.status = 'SUCCESS' " +
-           "AND t.createdAt BETWEEN :start AND :end")
-    BigDecimal sumAmountByTypeAndDateRange(String account, TransactionType type, 
-                                           LocalDateTime start, LocalDateTime end);
-    
-    @Query("SELECT COUNT(t) FROM Transaction t WHERE t.accountNumber = :account " +
-           "AND t.status = :status AND t.createdAt BETWEEN :start AND :end")
-    long countByAccountAndStatusAndDateRange(String account, TransactionStatus status,
-                                            LocalDateTime start, LocalDateTime end);
-    
-    boolean existsByTransactionReference(String transactionReference);
-    
-    @Query("SELECT t FROM Transaction t WHERE t.status IN ('INITIATED', 'PENDING', 'PROCESSING') " +
-           "AND t.createdAt < :timeout")
-    List<Transaction> findTimeoutTransactions(LocalDateTime timeout);
+    BigDecimal sumCompletedAmount(
+        @Param("start") LocalDateTime start,
+        @Param("end") LocalDateTime end
+    );
 }

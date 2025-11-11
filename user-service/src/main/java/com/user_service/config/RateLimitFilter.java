@@ -46,12 +46,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
             return;
         }
         
-        // If user is authenticated, check user-specific rate limit
-        String userId = extractUserIdFromRequest(request);
-        if (userId != null && !rateLimitService.isAllowedForUser(userId, endpoint)) {
-            handleRateLimitExceeded(response, "Too many requests. Please try again later.");
-            return;
-        }
+//        // If user is authenticated, check user-specific rate limit
+//        String userId = extractUserIdFromRequest(request);
+//        if (userId != null && !rateLimitService.isAllowedForUser(userId, endpoint)) {
+//            handleRateLimitExceeded(response, "Too many requests. Please try again later.");
+//            return;
+//        }
         
         filterChain.doFilter(request, response);
     }

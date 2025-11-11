@@ -14,7 +14,7 @@ import com.user_service.model.User;
 
 @Mapper(componentModel = "spring", uses = {ProfileMapper.class})
 public interface UserMapper {
-	UserMapper INSTANCE = Mappers.getMapper(UserMapper.class);
+
 	@Mapping(target = "id", ignore = true)
     @Mapping(target = "username", source = "emailId")
     @Mapping(target = "email", source = "emailId")

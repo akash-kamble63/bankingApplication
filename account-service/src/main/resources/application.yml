@@ -188,6 +188,7 @@ springdoc:
     disable-swagger-default-url: true
 
 resilience4j:
+
   circuitbreaker:
     instances:
       userService:
@@ -210,7 +211,7 @@ resilience4j:
   retry:
     instances:
       database:
-        max-attempts: 3
+        max-attempts: 5
         wait-duration: 500ms
         enable-exponential-backoff: true
         exponential-backoff-multiplier: 2

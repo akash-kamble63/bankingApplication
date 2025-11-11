@@ -8,12 +8,18 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 
 @Entity
+//@Table(name = "account_event_store", indexes = {
+//    @Index(name = "idx_aggregate_id", columnList = "aggregate_id"),
+//    @Index(name = "idx_aggregate_version", columnList = "aggregate_id, version"),
+//    @Index(name = "idx_event_type", columnList = "event_type"),
+//    @Index(name = "idx_timestamp", columnList = "timestamp")
+//})
 @Table(name = "account_event_store", indexes = {
-    @Index(name = "idx_aggregate_id", columnList = "aggregate_id"),
-    @Index(name = "idx_aggregate_version", columnList = "aggregate_id, version"),
-    @Index(name = "idx_event_type", columnList = "event_type"),
-    @Index(name = "idx_timestamp", columnList = "timestamp")
-})
+	    @Index(name = "idx_aggregate_version", columnList = "aggregate_id, version")
+	},
+	uniqueConstraints = {
+	    @UniqueConstraint(name = "uk_aggregate_version", columnNames = {"aggregate_id", "version"}) // ✅
+	})
 @Data
 @Builder
 @AllArgsConstructor
