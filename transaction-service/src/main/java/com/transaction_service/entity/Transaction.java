@@ -84,10 +84,10 @@ public class Transaction {
     private String description;
     
     @Column(name = "hold_reference", length = 50)
-    private String holdReference; // ✅ Link to account hold
+    private String holdReference; 
     
     @Column(name = "saga_id", length = 36)
-    private String sagaId; // ✅ Saga correlation ID
+    private String sagaId; 
     
     @Column(name = "correlation_id", length = 36)
     private String correlationId;
@@ -115,10 +115,10 @@ public class Transaction {
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
     
-    @Version // ✅ Optimistic locking for concurrent updates
+    @Version 
     private Long version;
     
-    // ✅ Metadata stored as JSON (no separate table)
+   
     @Column(name = "metadata", columnDefinition = "jsonb")
     private String metadata;
 }

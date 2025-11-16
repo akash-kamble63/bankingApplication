@@ -1,0 +1,164 @@
+spring:
+  application:
+    name: payment-service
+  
+  datasource:
+    url: jdbc:postgresql://localhost:5432/payment_db
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+  
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        jdbc:
+          batch_size: 20
+        order_inserts: true
+        order_updates: true
+    show-sql: false
+  
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: 3
+  
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:8080/realms/banking
+          jwk-set-uri: http://localhost:8080/realms/banking/protocol/openid-connect/certs
+  data:
+    redis:
+      port: 6379
+      timeout: 10s
+      client-type: lettuce
+      host: localhost
+      pool:
+        enabled: true
+        max-active: 50
+        max-idle: 20
+        min-idle: 5
+        max-wait: 5s
+
+# Service URLs
+services:
+  account-service:
+    url: http://localhost:8081
+  fraud-service:
+    url: http://localhost:8084
+  merchant-service:
+    url: http://localhost:8085
+  notification-service:
+    url: http://localhost:8086
+
+# Resilience4j Configuration
+resilience4j:
+  circuitbreaker:
+    instances:
+      razorpay:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        waitDurationInOpenState: 10s
+        failureRateThreshold: 50
+        eventConsumerBufferSize: 10
+      
+      stripe:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+      
+      account-service:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 5s
+      
+      fraud-service:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        failureRateThreshold: 60
+        waitDurationInOpenState: 3s
+      
+      merchant-service:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+      
+      payment-gateway:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+  
+  retry:
+    instances:
+      razorpay:
+        maxAttempts: 3
+        waitDuration: 1s
+        retryExceptions:
+          - java.net.ConnectException
+          - java.util.concurrent.TimeoutException
+      
+      stripe:
+        maxAttempts: 3
+        waitDuration: 1s
+      
+      account-service:
+        maxAttempts: 2
+        waitDuration: 500ms
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus,metrics,info
+  endpoint:
+    health:
+      show-details: always
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+
+# Logging
+logging:
+  level:
+    com.payment_service: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.springframework.kafka: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+
+# Payment Configuration
+payment:
+  card:
+    max-amount: 1000000
+    min-amount: 1
+  upi:
+    max-amount: 100000
+    timeout-minutes: 15
+  rate-limit:
+    hourly: 50
+    daily: 200
+
+server:
+  port: 8083
