@@ -1,5 +1,6 @@
 package com.account_service.kafka;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
@@ -50,7 +51,7 @@ public class AccountEventPublisher {
     }
 
     public void publishBalanceUpdated(Account account, String transactionType, 
-                                     java.math.BigDecimal amount, String reference) {
+                                     BigDecimal amount, String reference) {
         try {
             Map<String, Object> event = new HashMap<>();
             event.put("eventType", "BalanceUpdated");

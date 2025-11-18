@@ -11,6 +11,7 @@ import com.account_service.dto.CreateAccountRequest;
 import com.account_service.enums.AccountHolderType;
 import com.account_service.enums.AccountType;
 import com.account_service.service.AccountService;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import lombok.RequiredArgsConstructor;
@@ -31,8 +32,10 @@ public class UserEventConsumer {
 		try {
 			log.info("Received user event: {}", message);
 
-			Map<String, Object> event = objectMapper.readValue(message, Map.class);
+			Map<String, Object> event = objectMapper.readValue(message, new TypeReference<Map<String, Object>>() {
+			});
 			String eventType = (String) event.get("eventType");
+			@SuppressWarnings("unchecked")
 			Map<String, Object> payload = (Map<String, Object>) event.get("payload");
 
 			if ("UserRegistered".equals(eventType)) {

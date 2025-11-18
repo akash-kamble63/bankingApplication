@@ -87,13 +87,13 @@ public class OutboxScheduler {
         long pendingCount = outboxRepository.countByStatus(OutboxStatus.PENDING);
         
         if (pendingCount > 1000) { // Alert threshold
-            log.error("❌ CRITICAL: {} pending outbox events! Kafka may be down", pendingCount);
+            log.error("CRITICAL: {} pending outbox events! Kafka may be down", pendingCount);
 
         }
         
         long failedCount = outboxRepository.countByStatus(OutboxStatus.FAILED);
         if (failedCount > 100) {
-            log.error("❌ CRITICAL: {} permanently failed events!", failedCount);
+            log.error(" CRITICAL: {} permanently failed events!", failedCount);
         }
     }
 }

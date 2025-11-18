@@ -1,0 +1,67 @@
+spring:
+  application:
+    name: loan-service
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/loan_db
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+    show-sql: false
+
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:8080/realms/banking
+
+services:
+  account-service:
+    url: http://localhost:8081
+  fraud-service:
+    url: http://localhost:8084
+  credit-bureau:
+    url: http://localhost:9001
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      account-service:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+      credit-bureau:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 30s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus,metrics
+
+logging:
+  level:
+    com.loan_service: DEBUG
+
+server:
+  port: 8088

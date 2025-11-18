@@ -1,0 +1,144 @@
+spring:
+  application:
+    name: fraud-detection-service
+  
+  datasource:
+    url: jdbc:postgresql://localhost:5432/fraud_detection_db
+    username: postgres
+    password: admin
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 30000
+  
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        use_sql_comments: true
+
+  
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: fraud-detection-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: 3
+  
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/banking}
+          jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://localhost:8080/realms/banking/protocol/openid-connect/certs}
+  data:
+    redis:
+      client-type: lettuce
+    
+    host: localhost
+    port: 6379
+    password: 
+     timeout: 60000
+    lettuce:
+      shutdown-timeout: 100ms
+      pool:
+         max-active: 8
+         max-idle: 8
+         min-idle: 2
+         max-wait: -1ms
+
+server:
+  port: 8085
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URI:http://localhost:8761/eureka}
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+    lease-renewal-interval-in-seconds: 30
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  tracing:
+    sampling:
+      probability: 1.0
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      fraudDetection:
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10000
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+  ratelimiter:
+    instances:
+      fraudDetection:
+        limit-for-period: 100
+        limit-refresh-period: 1s
+        timeout-duration: 0
+
+logging:
+  level:
+    com.bank.frauddetection: INFO
+    org.springframework.kafka: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+
+fraud:
+  detection:
+    # Velocity checks (transactions per time window)
+    velocity:
+      max-transactions-per-hour: 10
+      max-transactions-per-day: 50
+      max-amount-per-hour: 10000
+      max-amount-per-day: 50000
+    
+    # Geographic checks
+    geographic:
+      suspicious-countries: CN,RU,NG,PK
+      max-distance-km: 500
+      max-time-between-locations-minutes: 60
+    
+    # Amount checks
+    amount:
+      high-value-threshold: 5000
+      unusual-multiplier: 3.0
+    
+    # Time-based checks
+    time:
+      unusual-hours-start: 1
+      unusual-hours-end: 6
+    
+    # Machine learning model
+    ml:
+      enabled: true
+      threshold: 0.7
+      model-version: v1.0

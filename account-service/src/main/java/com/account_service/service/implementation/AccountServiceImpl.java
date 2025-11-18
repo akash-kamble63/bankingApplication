@@ -57,8 +57,6 @@ public class AccountServiceImpl implements AccountService {
 	private final EventSourcingService eventSourcingService;
 	private final AuditService auditService;
 
-	// ============= COMMAND METHODS (WRITE OPERATIONS - CQRS) =============
-
 	/**
 	 * Create new account (COMMAND) Uses Outbox pattern, Event Sourcing, and
 	 * publishes events

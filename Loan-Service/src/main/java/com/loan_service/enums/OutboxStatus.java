@@ -1,0 +1,7 @@
+package com.loan_service.enums;
+
+public enum OutboxStatus {
+    PENDING,
+    PUBLISHED,
+    FAILED
+}
