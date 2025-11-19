@@ -34,10 +34,10 @@ public class VerificationSyncServiceImpl implements VerificationSyncService {
     
     private final UserRepository userRepository;
     private final KeycloakService keycloakService;
-    private final LockRegistry lockRegistry;  // FIX: Add distributed lock registry
+    private final LockRegistry lockRegistry; 
     
     @PersistenceContext
-    private EntityManager entityManager;  // FIX: Add EntityManager for pessimistic locking
+    private EntityManager entityManager;      
     
     /**
      * Process Keycloak webhook events asynchronously
@@ -73,16 +73,16 @@ public class VerificationSyncServiceImpl implements VerificationSyncService {
     
     /**
      * Sync verification status for a specific user
-     * FIX: Added distributed locking and pessimistic locking to prevent race conditions
+     * 
      */
     @Override
-    @Transactional(isolation = Isolation.READ_COMMITTED)  // FIX: Set appropriate isolation level
+    @Transactional(isolation = Isolation.READ_COMMITTED)  
     public void syncUserVerificationStatus(String authId) {
         // FIX: Use distributed lock to prevent concurrent processing of same user
         Lock lock = lockRegistry.obtain("user-verification:" + authId);
         
         try {
-            // FIX: Try to acquire lock with timeout
+            
             if (!lock.tryLock()) {
                 log.info("Another process is already syncing user {}, skipping", authId);
                 return;
@@ -95,10 +95,10 @@ public class VerificationSyncServiceImpl implements VerificationSyncService {
                 User user = userRepository.findByAuthId(authId)
                         .orElseThrow(() -> new ResourceNotFoundException("User not found with authId: " + authId));
                 
-                // FIX: Apply pessimistic write lock
+                
                 entityManager.lock(user, LockModeType.PESSIMISTIC_WRITE);
                 
-                // FIX: Double-check status after acquiring lock (double-checked locking pattern)
+                
                 if (user.getStatus() == UserStatus.ACTIVE && user.getEmailVerifiedAt() != null) {
                     log.debug("User {} already active and verified, skipping sync", user.getEmail());
                     return;
@@ -134,7 +134,7 @@ public class VerificationSyncServiceImpl implements VerificationSyncService {
             }
             
         } finally {
-            // FIX: Always release the lock
+            
             try {
                 lock.unlock();
             } catch (Exception e) {
@@ -146,16 +146,16 @@ public class VerificationSyncServiceImpl implements VerificationSyncService {
     /**
      * Scheduled job to sync all pending users
      * Runs every 5 minutes as a fallback mechanism
-     * FIX: Added locking to prevent concurrent execution
+     * 
      */
     @Override
     @Scheduled(cron = "${app.sync.verification.cron:0 */5 * * * ?}")
     public void syncVerificationStatus() {
-        // FIX: Use distributed lock to prevent multiple instances from running simultaneously
+        
         Lock schedulerLock = lockRegistry.obtain("verification-sync-scheduler");
         
         try {
-            // FIX: Try to acquire lock without waiting - if another instance is running, skip
+            
             if (!schedulerLock.tryLock()) {
                 log.info("Verification sync job already running in another instance, skipping");
                 return;
@@ -174,10 +174,7 @@ public class VerificationSyncServiceImpl implements VerificationSyncService {
         }
     }
     
-    /**
-     * FIX: Extracted sync job logic to separate transactional method
-     * This ensures proper transaction boundaries
-     */
+    
     @Transactional(isolation = Isolation.READ_COMMITTED)
     protected void executeSyncJob() {
         long startTime = System.currentTimeMillis();
@@ -186,7 +183,7 @@ public class VerificationSyncServiceImpl implements VerificationSyncService {
         int skippedCount = 0;
         
         try {
-            // Find all users with PENDING status
+            
             List<User> pendingUsers = userRepository.findByStatus(UserStatus.PENDING);
             
             if (pendingUsers.isEmpty()) {
@@ -198,7 +195,7 @@ public class VerificationSyncServiceImpl implements VerificationSyncService {
             
             for (User user : pendingUsers) {
                 try {
-                    // FIX: Use distributed lock for each user to prevent concurrent updates
+                    
                     Lock userLock = lockRegistry.obtain("user-verification:" + user.getAuthId());
                     
                     try {
@@ -208,7 +205,7 @@ public class VerificationSyncServiceImpl implements VerificationSyncService {
                             continue;
                         }
                         
-                        // FIX: Reload user with pessimistic lock within this transaction
+                        
                         User lockedUser = userRepository.findById(user.getId())
                                 .orElse(null);
                         
@@ -220,7 +217,7 @@ public class VerificationSyncServiceImpl implements VerificationSyncService {
                         
                         entityManager.lock(lockedUser, LockModeType.PESSIMISTIC_WRITE);
                         
-                        // FIX: Double-check status after acquiring lock
+                        
                         if (lockedUser.getStatus() != UserStatus.PENDING) {
                             log.debug("User {} status changed to {}, skipping", 
                                     lockedUser.getEmail(), lockedUser.getStatus());

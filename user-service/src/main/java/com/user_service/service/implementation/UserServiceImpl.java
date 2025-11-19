@@ -28,6 +28,7 @@ import com.user_service.dto.UserFilterRequest;
 import com.user_service.dto.UserResponse;
 import com.user_service.enums.AuditAction;
 import com.user_service.enums.UserStatus;
+import com.user_service.event.UserEventPublisher;
 import com.user_service.exception.ResourceConflictException;
 import com.user_service.exception.ResourceNotFoundException;
 import com.user_service.mapper.UserMapper;
@@ -55,6 +56,7 @@ public class UserServiceImpl implements UserService {
 	private final KeycloakService keycloakService;
 	private final UserMapper userMapper;
 	private final AuditService auditService;
+	private final UserEventPublisher userEventPublisher; 
 	
 	@PersistenceContext
 	private EntityManager entityManager;
@@ -64,16 +66,13 @@ public class UserServiceImpl implements UserService {
 	@Value("${app.codes.not_found}")
 	private String responseCodeNodeFound;
 
-	// ===============================CREATE METHODS=====================================
 
 	@Override
-	@Transactional(isolation = Isolation.SERIALIZABLE)  // FIX: Prevent concurrent inserts
+	@Transactional(isolation = Isolation.SERIALIZABLE)
 	@Auditable(action = AuditAction.USER_CREATED, entityType = "User")
 	public ApiResponse<UserResponse> createUser(CreateUserRequest request) {
 		log.info("Creating user with email: {}", request.getEmailId());
 
-		// FIX: Use synchronized block or database constraint
-		// Check if user already exists with a lock
 		if (userRepository.existsByEmail(request.getEmailId())) {
 			log.error("Email already exists: {}", request.getEmailId());
 			throw new ResourceConflictException(Constants.EMAIL_ALREADY_EXISTS);
@@ -112,10 +111,12 @@ public class UserServiceImpl implements UserService {
 		user.setAuthId(keycloakUserId);
 		user.setStatus(UserStatus.PENDING);
 
-		// FIX: Catch duplicate key exception as additional safety
 		try {
-			User savedUser = userRepository.saveAndFlush(user);  // FIX: Use saveAndFlush
+			User savedUser = userRepository.saveAndFlush(user);
 			log.info("User saved to database with ID: {}", savedUser.getId());
+
+			// ADDED: Publish UserRegistered event to Kafka
+			userEventPublisher.publishUserRegistered(savedUser);
 
 			// Map to response
 			UserResponse userResponse = userMapper.toResponse(savedUser);
@@ -129,14 +130,12 @@ public class UserServiceImpl implements UserService {
 			);
 			return ApiResponse.success(userResponse, Constants.USER_CREATED);
 		} catch (org.springframework.dao.DataIntegrityViolationException ex) {
-			// FIX: Handle race condition where email was inserted between check and save
 			log.error("Race condition detected - email already exists: {}", request.getEmailId());
 			throw new ResourceConflictException(Constants.EMAIL_ALREADY_EXISTS);
 		}
 	}
 
 
-	// ====================================READ METHODS=====================================
 
 	@Override
 	@Transactional(readOnly = true)
@@ -212,25 +211,22 @@ public class UserServiceImpl implements UserService {
 		return ApiResponse.success(userResponses, "Users retrieved successfully");
 	}
 
-	// ==================================UPDATE METHODS======================================
 
 	@Override
 	@Transactional(isolation = Isolation.REPEATABLE_READ)
 	@Caching(
 		evict = {
 			@CacheEvict(value = "userProfile", key = "#userId"),
-			@CacheEvict(value = "userList", allEntries = true)  // FIX: Clear all list cache
+			@CacheEvict(value = "userList", allEntries = true)
 		}
 	)
 	@Auditable(action = AuditAction.USER_UPDATED, entityType = "User")
 	public ApiResponse<UserResponse> updateUser(Long userId, UpdateUserRequest request) {
 		log.info("Updating user with ID: {}", userId);
 
-		// FIX: Use pessimistic locking to prevent concurrent modifications
 		User user = userRepository.findById(userId)
 				.orElseThrow(() -> new ResourceNotFoundException("User not found with ID: " + userId));
 		
-		// FIX: Apply pessimistic write lock
 		entityManager.lock(user, LockModeType.PESSIMISTIC_WRITE);
 
 		if (request.getFirstName() != null) {
@@ -249,8 +245,11 @@ public class UserServiceImpl implements UserService {
 			log.error("Failed to update user in Keycloak: {}", e.getMessage());
 		}
 
-		User updatedUser = userRepository.saveAndFlush(user);  // FIX: Use saveAndFlush
+		User updatedUser = userRepository.saveAndFlush(user);
 		log.info("User updated successfully: {}", userId);
+
+		// ADDED: Publish UserUpdated event
+		userEventPublisher.publishUserUpdated(updatedUser);
 
 		UserResponse response = userMapper.toResponse(updatedUser);
 		
@@ -284,13 +283,12 @@ public class UserServiceImpl implements UserService {
 	}
 
 	@Override
-	@Transactional  // FIX: Use pessimistic locking
+	@Transactional
 	@CacheEvict(value = "userProfile", key = "#userId")
 	@Auditable(action = AuditAction.PROFILE_UPDATED, entityType = "Profile")
 	public ApiResponse<UserResponse> updateUserProfile(Long userId, UpdateProfileRequest request) {
 		log.info("Update user profile for userId: {}", userId);
 		
-		// FIX: Use pessimistic locking
 		User user = userRepository.findById(userId)
 				.orElseThrow(() -> new ResourceNotFoundException("User not Found"));
 		
@@ -313,7 +311,11 @@ public class UserServiceImpl implements UserService {
 			profile.setOccupation(request.getOccupation());
 		}
 
-		User updatedUser = userRepository.saveAndFlush(user);  // FIX: Use saveAndFlush
+		User updatedUser = userRepository.saveAndFlush(user);
+		
+		// ADDED: Publish ProfileUpdated event
+		userEventPublisher.publishProfileUpdated(updatedUser);
+		
 		UserResponse response = userMapper.toResponse(updatedUser);
 		
 		auditService.logSuccess(
@@ -343,10 +345,9 @@ public class UserServiceImpl implements UserService {
 		return updateUserProfile(user.getId(), request);
 	}
 
-	// ================================DELETE METHODS=================================
 
 	@Override
-	@Transactional  // FIX: Use pessimistic locking
+	@Transactional
 	@Caching(evict = {
 		@CacheEvict(value = "userProfile", key = "#userId"),
 		@CacheEvict(value = "userList", allEntries = true),
@@ -356,14 +357,16 @@ public class UserServiceImpl implements UserService {
 	public ApiResponse<Void> deleteUser(Long userId) {
 		log.info("DEleting the user :{}", userId);
 		
-		// FIX: Use pessimistic locking
 		User user = userRepository.findById(userId)
 				.orElseThrow(() -> new ResourceNotFoundException("User Not Found"));
 		
 		entityManager.lock(user, LockModeType.PESSIMISTIC_WRITE);
 		
 		user.setStatus(UserStatus.DELETED);
-		userRepository.saveAndFlush(user);  // FIX: Use saveAndFlush
+		userRepository.saveAndFlush(user);
+		
+		// ADDED: Publish UserDeleted event
+		userEventPublisher.publishUserDeleted(user);
 		
 		// disable in keycloak
 		try {
@@ -388,19 +391,21 @@ public class UserServiceImpl implements UserService {
 	}
 
 	@Override
-	@Transactional  // FIX: Use pessimistic locking
+	@Transactional
 	@Auditable(action = AuditAction.USER_DEACTIVATED, entityType = "User")
 	public ApiResponse<Void> deactivateUser(Long userId) {
 		log.info("Deactivating user with ID: {}", userId);
 		
-		// FIX: Use pessimistic locking
 		User user = userRepository.findById(userId)
 				.orElseThrow(() -> new ResourceNotFoundException("User not found with given id"));
 		
 		entityManager.lock(user, LockModeType.PESSIMISTIC_WRITE);
 		
 		user.setStatus(UserStatus.INACTIVE);
-		userRepository.saveAndFlush(user);  // FIX: Use saveAndFlush
+		userRepository.saveAndFlush(user);
+		
+		// ADDED: Publish UserDeactivated event
+		userEventPublisher.publishUserDeactivated(user);
 		
 		try {
 			UserRepresentation keycloakUser = keycloakService.getUserById(user.getAuthId());
@@ -426,12 +431,11 @@ public class UserServiceImpl implements UserService {
 	}
 
 	@Override
-	@Transactional  // FIX: Use pessimistic locking
+	@Transactional
 	@Auditable(action = AuditAction.USER_ACTIVATED, entityType = "User")
 	public ApiResponse<Void> activateUser(Long userId) {
 		log.info("Activating user with ID: {}", userId);
 		
-		// FIX: Use pessimistic locking
 		User user = userRepository.findById(userId)
 				.orElseThrow(() -> new ResourceNotFoundException("User not found with given id"));
 		
@@ -442,7 +446,10 @@ public class UserServiceImpl implements UserService {
 		}
 		
 		user.setStatus(UserStatus.ACTIVE);
-		userRepository.saveAndFlush(user);  // FIX: Use saveAndFlush
+		userRepository.saveAndFlush(user);
+		
+		// ADDED: Publish UserActivated event
+		userEventPublisher.publishUserActivated(user);
 		
 		try {
 			UserRepresentation keycloakUser = keycloakService.getUserById(user.getAuthId());
@@ -465,7 +472,6 @@ public class UserServiceImpl implements UserService {
 		return ApiResponse.success("User Activated Successfully");
 	}
 
-	// ==================================== OTHER ===========================================
 
 	@Override
 	@Transactional
@@ -518,7 +524,6 @@ public class UserServiceImpl implements UserService {
 		return ApiResponse.success(userResponses, "Users retrieved successfully");
 	}
 
-	// ==================== HELPER METHODS ====================
 
 	private UserRepresentation buildKeycloakUser(CreateUserRequest request) {
 		UserRepresentation userRepresentation = new UserRepresentation();
