@@ -15,7 +15,6 @@ public class PasswordValidator implements ConstraintValidator<ValidPassword, Str
 
     @Override
     public void initialize(ValidPassword constraintAnnotation) {
-        // No initialization required
     }
 
     @Override

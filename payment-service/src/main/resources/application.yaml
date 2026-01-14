@@ -39,8 +39,8 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://localhost:8080/realms/banking
-          jwk-set-uri: http://localhost:8080/realms/banking/protocol/openid-connect/certs
+          issuer-uri: http://localhost:8280/realms/banking-realm
+          jwk-set-uri: http://localhost:8280/realms/banking-realm/protocol/openid-connect/certs
   data:
     redis:
       port: 6379
@@ -57,7 +57,7 @@ spring:
 # Service URLs
 services:
   account-service:
-    url: http://localhost:8081
+    url: http://localhost:8091
   fraud-service:
     url: http://localhost:8084
   merchant-service:
@@ -162,3 +162,14 @@ payment:
 
 server:
   port: 8083
+
+# Eureka Client Configuration
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${server.port}

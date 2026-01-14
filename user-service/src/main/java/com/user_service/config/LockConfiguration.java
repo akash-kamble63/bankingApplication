@@ -25,7 +25,7 @@ public class LockConfiguration {
                 TimeUnit.SECONDS.toMillis(60)  // Lock expiration time (60 seconds)
         );
         
-        // For single-instance deployment (NOT recommended for production):
+        // For single-instance deployment
         // return new DefaultLockRegistry();
     }
 }

@@ -92,7 +92,7 @@ public class AuditAspect {
 					try {
 						return Long.parseLong(userId);
 					} catch (NumberFormatException e) {
-						// If it's a UUID or string ID, you might need to hash it or handle differently
+			
 						log.warn("User ID is not a Long: {}", userId);
 						return userId.hashCode() & 0xFFFFFFFFL; // Convert to positive long
 					}
