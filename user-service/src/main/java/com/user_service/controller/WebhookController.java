@@ -1,5 +1,6 @@
 package com.user_service.controller;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -10,6 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.user_service.dto.ApiResponse;
 import com.user_service.event.KeycloakWebhookEvent;
 import com.user_service.service.VerificationSyncService;
+import com.user_service.service.implementation.WebhookSecurityService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,8 +21,9 @@ import lombok.extern.slf4j.Slf4j;
 @RequestMapping("/api/webhooks")
 @RequiredArgsConstructor
 public class WebhookController {
-private final VerificationSyncService verificationSyncService;
-    
+    private final VerificationSyncService verificationSyncService;
+    private final WebhookSecurityService webhookSecurityService;
+
     /**
      * Webhook endpoint to receive Keycloak events
      * Must be publicly accessible (add to SecurityConfig)
@@ -29,12 +32,17 @@ private final VerificationSyncService verificationSyncService;
     public ResponseEntity<ApiResponse<Void>> handleKeycloakEvent(
             @RequestBody KeycloakWebhookEvent event,
             @RequestHeader(value = "X-Keycloak-Secret", required = false) String secret) {
-        
+
         log.info("Received Keycloak webhook event: type={}, userId={}", event.getType(), event.getUserId());
-        
-        // Validate webhook secret (security best practice)
-        // TODO: Add webhook secret validation
-        
+
+        // Validate webhook secret
+        if (!webhookSecurityService.validateWebhookSecret(secret)) {
+            log.warn("Invalid webhook secret received from IP");
+            return ResponseEntity
+                    .status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.error("401", "Invalid webhook secret"));
+        }
+
         try {
             verificationSyncService.processKeycloakEvent(event);
             return ResponseEntity.ok(ApiResponse.success("Event processed successfully"));

@@ -56,16 +56,15 @@ public class UserServiceImpl implements UserService {
 	private final KeycloakService keycloakService;
 	private final UserMapper userMapper;
 	private final AuditService auditService;
-	private final UserEventPublisher userEventPublisher; 
-	
+	private final UserEventPublisher userEventPublisher;
+
 	@PersistenceContext
 	private EntityManager entityManager;
-	
+
 	@Value("${app.codes.success}")
 	private String responseCodeSuccess;
 	@Value("${app.codes.not_found}")
-	private String responseCodeNodeFound;
-
+	private String responseCodeNotFound;
 
 	@Override
 	@Transactional(isolation = Isolation.SERIALIZABLE)
@@ -122,20 +121,17 @@ public class UserServiceImpl implements UserService {
 			UserResponse userResponse = userMapper.toResponse(savedUser);
 
 			auditService.logSuccess(
-				AuditAction.USER_CREATED,
-				savedUser.getId(),
-				"User",
-				String.valueOf(savedUser.getId()),
-				savedUser
-			);
+					AuditAction.USER_CREATED,
+					savedUser.getId(),
+					"User",
+					String.valueOf(savedUser.getId()),
+					savedUser);
 			return ApiResponse.success(userResponse, Constants.USER_CREATED);
 		} catch (org.springframework.dao.DataIntegrityViolationException ex) {
 			log.error("Race condition detected - email already exists: {}", request.getEmailId());
 			throw new ResourceConflictException(Constants.EMAIL_ALREADY_EXISTS);
 		}
 	}
-
-
 
 	@Override
 	@Transactional(readOnly = true)
@@ -148,7 +144,7 @@ public class UserServiceImpl implements UserService {
 
 		return ApiResponse.success(userResponses, "Users retrieved successfully");
 	}
-	
+
 	@Override
 	@Transactional(readOnly = true)
 	@Cacheable(value = "userProfile", key = "'email:' + #email", unless = "#result == null")
@@ -199,9 +195,7 @@ public class UserServiceImpl implements UserService {
 
 	@Override
 	@Transactional(readOnly = true)
-	@Cacheable(value = "userList", 
-    key = "'page:' + #pageable.pageNumber + ':size:' + #pageable.pageSize",
-    unless = "#result == null")
+	@Cacheable(value = "userList", key = "'page:' + #pageable.pageNumber + ':size:' + #pageable.pageSize", unless = "#result == null")
 	public ApiResponse<Page<UserResponse>> getAllUsers(Pageable pageable) {
 		log.info("Fetching all users - Page: {}, Size: {}", pageable.getPageNumber(), pageable.getPageSize());
 
@@ -211,22 +205,19 @@ public class UserServiceImpl implements UserService {
 		return ApiResponse.success(userResponses, "Users retrieved successfully");
 	}
 
-
 	@Override
 	@Transactional(isolation = Isolation.REPEATABLE_READ)
-	@Caching(
-		evict = {
+	@Caching(evict = {
 			@CacheEvict(value = "userProfile", key = "#userId"),
 			@CacheEvict(value = "userList", allEntries = true)
-		}
-	)
+	})
 	@Auditable(action = AuditAction.USER_UPDATED, entityType = "User")
 	public ApiResponse<UserResponse> updateUser(Long userId, UpdateUserRequest request) {
 		log.info("Updating user with ID: {}", userId);
 
 		User user = userRepository.findById(userId)
 				.orElseThrow(() -> new ResourceNotFoundException("User not found with ID: " + userId));
-		
+
 		entityManager.lock(user, LockModeType.PESSIMISTIC_WRITE);
 
 		if (request.getFirstName() != null) {
@@ -252,15 +243,14 @@ public class UserServiceImpl implements UserService {
 		userEventPublisher.publishUserUpdated(updatedUser);
 
 		UserResponse response = userMapper.toResponse(updatedUser);
-		
+
 		auditService.logSuccess(
-			AuditAction.USER_UPDATED,
-			userId,
-			"User",
-			String.valueOf(userId),
-			request
-		);
-		
+				AuditAction.USER_UPDATED,
+				userId,
+				"User",
+				String.valueOf(userId),
+				request);
+
 		return ApiResponse.success(response, "User updated successfully");
 	}
 
@@ -271,14 +261,13 @@ public class UserServiceImpl implements UserService {
 		log.info("Current user updated by email: {}", email);
 		User user = userRepository.findByEmail(email)
 				.orElseThrow(() -> new ResourceNotFoundException("User not Found"));
-		
+
 		auditService.logSuccess(
-			AuditAction.USER_UPDATED,
-			user.getId(),
-			"User",
-			String.valueOf(user.getId()),
-			request
-		);
+				AuditAction.USER_UPDATED,
+				user.getId(),
+				"User",
+				String.valueOf(user.getId()),
+				request);
 		return updateUser(user.getId(), request);
 	}
 
@@ -288,10 +277,10 @@ public class UserServiceImpl implements UserService {
 	@Auditable(action = AuditAction.PROFILE_UPDATED, entityType = "Profile")
 	public ApiResponse<UserResponse> updateUserProfile(Long userId, UpdateProfileRequest request) {
 		log.info("Update user profile for userId: {}", userId);
-		
+
 		User user = userRepository.findById(userId)
 				.orElseThrow(() -> new ResourceNotFoundException("User not Found"));
-		
+
 		entityManager.lock(user, LockModeType.PESSIMISTIC_WRITE);
 
 		Profile profile = user.getProfile();
@@ -312,19 +301,18 @@ public class UserServiceImpl implements UserService {
 		}
 
 		User updatedUser = userRepository.saveAndFlush(user);
-		
+
 		// ADDED: Publish ProfileUpdated event
 		userEventPublisher.publishProfileUpdated(updatedUser);
-		
+
 		UserResponse response = userMapper.toResponse(updatedUser);
-		
+
 		auditService.logSuccess(
-			AuditAction.PROFILE_UPDATED,
-			user.getId(),
-			"User",
-			String.valueOf(user.getId()),
-			request
-		);
+				AuditAction.PROFILE_UPDATED,
+				user.getId(),
+				"User",
+				String.valueOf(user.getId()),
+				request);
 		return ApiResponse.success(response, "User profile updated successfully");
 	}
 
@@ -336,38 +324,36 @@ public class UserServiceImpl implements UserService {
 		User user = userRepository.findByEmail(email)
 				.orElseThrow(() -> new ResourceNotFoundException("User not found"));
 		auditService.logSuccess(
-			AuditAction.USER_UPDATED,
-			user.getId(),
-			"User",
-			String.valueOf(user.getId()),
-			request
-		);
+				AuditAction.PROFILE_UPDATED,
+				user.getId(),
+				"User",
+				String.valueOf(user.getId()),
+				request);
 		return updateUserProfile(user.getId(), request);
 	}
-
 
 	@Override
 	@Transactional
 	@Caching(evict = {
-		@CacheEvict(value = "userProfile", key = "#userId"),
-		@CacheEvict(value = "userList", allEntries = true),
-		@CacheEvict(value = "statistics", key = "'user:' + #userId")
+			@CacheEvict(value = "userProfile", key = "#userId"),
+			@CacheEvict(value = "userList", allEntries = true),
+			@CacheEvict(value = "statistics", key = "'user:' + #userId")
 	})
 	@Auditable(action = AuditAction.USER_DELETED, entityType = "User")
 	public ApiResponse<Void> deleteUser(Long userId) {
 		log.info("DEleting the user :{}", userId);
-		
+
 		User user = userRepository.findById(userId)
 				.orElseThrow(() -> new ResourceNotFoundException("User Not Found"));
-		
+
 		entityManager.lock(user, LockModeType.PESSIMISTIC_WRITE);
-		
+
 		user.setStatus(UserStatus.DELETED);
 		userRepository.saveAndFlush(user);
-		
+
 		// ADDED: Publish UserDeleted event
 		userEventPublisher.publishUserDeleted(user);
-		
+
 		// disable in keycloak
 		try {
 			UserRepresentation keycloakUser = keycloakService.getUserById(user.getAuthId());
@@ -379,14 +365,13 @@ public class UserServiceImpl implements UserService {
 			log.info("failed to disable user in keycloak: {}", ex.getMessage());
 		}
 		log.info("User deleted successfully : {}", userId);
-		
+
 		auditService.logSuccess(
-			AuditAction.USER_DELETED,
-			userId,
-			"User",
-			String.valueOf(userId),
-			user
-		);
+				AuditAction.USER_DELETED,
+				userId,
+				"User",
+				String.valueOf(userId),
+				user);
 		return ApiResponse.success("User deleted successfully");
 	}
 
@@ -395,18 +380,18 @@ public class UserServiceImpl implements UserService {
 	@Auditable(action = AuditAction.USER_DEACTIVATED, entityType = "User")
 	public ApiResponse<Void> deactivateUser(Long userId) {
 		log.info("Deactivating user with ID: {}", userId);
-		
+
 		User user = userRepository.findById(userId)
 				.orElseThrow(() -> new ResourceNotFoundException("User not found with given id"));
-		
+
 		entityManager.lock(user, LockModeType.PESSIMISTIC_WRITE);
-		
+
 		user.setStatus(UserStatus.INACTIVE);
 		userRepository.saveAndFlush(user);
-		
+
 		// ADDED: Publish UserDeactivated event
 		userEventPublisher.publishUserDeactivated(user);
-		
+
 		try {
 			UserRepresentation keycloakUser = keycloakService.getUserById(user.getAuthId());
 			if (keycloakUser != null) {
@@ -418,16 +403,15 @@ public class UserServiceImpl implements UserService {
 		}
 
 		log.info("User deactivated successfully: {}", userId);
-		
-		auditService.logSuccess(
-			AuditAction.USER_DEACTIVATED,
-			user.getId(),
-			"User",
-			String.valueOf(user.getId()),
-			user
-		);
 
-		return ApiResponse.success("User deleted successfully");
+		auditService.logSuccess(
+				AuditAction.USER_DEACTIVATED,
+				user.getId(),
+				"User",
+				String.valueOf(user.getId()),
+				user);
+
+		return ApiResponse.success("User deactivated successfully");
 	}
 
 	@Override
@@ -435,22 +419,22 @@ public class UserServiceImpl implements UserService {
 	@Auditable(action = AuditAction.USER_ACTIVATED, entityType = "User")
 	public ApiResponse<Void> activateUser(Long userId) {
 		log.info("Activating user with ID: {}", userId);
-		
+
 		User user = userRepository.findById(userId)
 				.orElseThrow(() -> new ResourceNotFoundException("User not found with given id"));
-		
+
 		entityManager.lock(user, LockModeType.PESSIMISTIC_WRITE);
-		
+
 		if (user.getEmailVerifiedAt() == null) {
 			return ApiResponse.error("400", "Cannot activate user - email not verified");
 		}
-		
+
 		user.setStatus(UserStatus.ACTIVE);
 		userRepository.saveAndFlush(user);
-		
+
 		// ADDED: Publish UserActivated event
 		userEventPublisher.publishUserActivated(user);
-		
+
 		try {
 			UserRepresentation keycloakUser = keycloakService.getUserById(user.getAuthId());
 			if (keycloakUser != null) {
@@ -461,17 +445,15 @@ public class UserServiceImpl implements UserService {
 			log.error("Failed to enable user in Keycloak: {}", ex.getMessage());
 		}
 		log.info("User activated successfully: {}", userId);
-		
+
 		auditService.logSuccess(
-			AuditAction.USER_ACTIVATED,
-			userId,
-			"User",
-			String.valueOf(userId),
-			user
-		);
+				AuditAction.USER_ACTIVATED,
+				userId,
+				"User",
+				String.valueOf(userId),
+				user);
 		return ApiResponse.success("User Activated Successfully");
 	}
-
 
 	@Override
 	@Transactional
@@ -489,41 +471,38 @@ public class UserServiceImpl implements UserService {
 
 		return ApiResponse.success(Constants.VERIFICATION_EMAIL_SENT);
 	}
-	
-	
+
+	@Override
 	public ApiResponse<Page<UserResponse>> searchUsers(UserFilterRequest filterRequest) {
 		log.info("Searching users with filters: {}", filterRequest);
-		
+
 		Specification<User> spec = UserSpecification.filterUsers(
-			filterRequest.getEmail(),
-			filterRequest.getFirstName(),
-			filterRequest.getLastName(),
-			filterRequest.getStatuses(),
-			filterRequest.getContactNumber(),
-			filterRequest.getEmailVerified(),
-			filterRequest.getCreatedAfter(),
-			filterRequest.getCreatedBefore(),
-			filterRequest.getNationality(),
-			filterRequest.getOccupation(),
-			filterRequest.getGender()
-		);
-		
+				filterRequest.getEmail(),
+				filterRequest.getFirstName(),
+				filterRequest.getLastName(),
+				filterRequest.getStatuses(),
+				filterRequest.getContactNumber(),
+				filterRequest.getEmailVerified(),
+				filterRequest.getCreatedAfter(),
+				filterRequest.getCreatedBefore(),
+				filterRequest.getNationality(),
+				filterRequest.getOccupation(),
+				filterRequest.getGender());
+
 		Sort sort = filterRequest.getSortDirection().equalsIgnoreCase("DESC")
-			? Sort.by(filterRequest.getSortBy()).descending()
-			: Sort.by(filterRequest.getSortBy()).ascending();
-		
+				? Sort.by(filterRequest.getSortBy()).descending()
+				: Sort.by(filterRequest.getSortBy()).ascending();
+
 		Pageable pageable = PageRequest.of(
-			filterRequest.getPage(),
-			filterRequest.getSize(),
-			sort
-		);
-		
+				filterRequest.getPage(),
+				filterRequest.getSize(),
+				sort);
+
 		Page<User> users = userRepository.findAll(spec, pageable);
 		Page<UserResponse> userResponses = users.map(userMapper::toResponse);
-		
+
 		return ApiResponse.success(userResponses, "Users retrieved successfully");
 	}
-
 
 	private UserRepresentation buildKeycloakUser(CreateUserRequest request) {
 		UserRepresentation userRepresentation = new UserRepresentation();

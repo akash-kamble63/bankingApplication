@@ -163,3 +163,7 @@ springdoc:
   swagger-ui:
     path: /swagger-ui.html
     disable-swagger-default-url: true
+
+webhook:
+  keycloak:
+    secret: ${KEYCLOAK_WEBHOOK_SECRET:bddfa40aca9d253e75b50c1a205706e4458e80b7bc60cc02e19bd223001f7d00}

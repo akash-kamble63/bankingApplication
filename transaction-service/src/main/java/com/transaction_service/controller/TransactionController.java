@@ -52,7 +52,7 @@ public class TransactionController {
 	private final RateLimitService rateLimitService;
 
 	/**
-	 * Create transfer transaction ✅ Idempotent via header ✅ Rate limited ✅ Input
+	 * Create transfer transaction Idempotent via header Rate limited Input
 	 * validated
 	 */
 	@PostMapping("/transfer")
@@ -120,7 +120,7 @@ public class TransactionController {
 	}
 
 	/**
-	 * Get daily summary ✅ Aggregated query (no N+1)
+	 * Get daily summary Aggregated query (no N+1)
 	 */
 	@GetMapping("/summary/daily")
 	@PreAuthorize("hasAnyRole('USER', 'ADMIN')")

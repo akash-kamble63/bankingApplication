@@ -355,28 +355,28 @@ public class AccountServiceImpl implements AccountService {
 
 	private BigDecimal getMinimumBalanceForType(AccountType type) {
 		return switch (type) {
-		case SAVINGS -> new BigDecimal("1000.00");
-		case CURRENT -> new BigDecimal("5000.00");
-		case SALARY -> BigDecimal.ZERO;
-		case STUDENT -> new BigDecimal("500.00");
-		default -> new BigDecimal("1000.00");
+			case SAVINGS -> new BigDecimal("1000.00");
+			case CURRENT -> new BigDecimal("5000.00");
+			case SALARY -> BigDecimal.ZERO;
+			case STUDENT -> new BigDecimal("500.00");
+			default -> new BigDecimal("1000.00");
 		};
 	}
 
 	private BigDecimal getOverdraftLimit(AccountType type) {
 		return switch (type) {
-		case CURRENT -> new BigDecimal("50000.00");
-		case SALARY -> new BigDecimal("10000.00");
-		default -> BigDecimal.ZERO;
+			case CURRENT -> new BigDecimal("50000.00");
+			case SALARY -> new BigDecimal("10000.00");
+			default -> BigDecimal.ZERO;
 		};
 	}
 
 	private BigDecimal getInterestRate(AccountType type) {
 		return switch (type) {
-		case SAVINGS -> new BigDecimal("4.00");
-		case FIXED_DEPOSIT -> new BigDecimal("6.50");
-		case RECURRING_DEPOSIT -> new BigDecimal("5.50");
-		default -> BigDecimal.ZERO;
+			case SAVINGS -> new BigDecimal("4.00");
+			case FIXED_DEPOSIT -> new BigDecimal("6.50");
+			case RECURRING_DEPOSIT -> new BigDecimal("5.50");
+			default -> BigDecimal.ZERO;
 		};
 	}
 
@@ -420,10 +420,10 @@ public class AccountServiceImpl implements AccountService {
 				predicates.add(cb.equal(root.get("userId"), filter.getUserId()));
 			}
 			if (filter.getAccountTypes() != null) {
-				predicates.add(cb.equal(root.get("accountType"), filter.getAccountTypes()));
+				predicates.add(root.get("accountType").in(filter.getAccountTypes()));
 			}
 			if (filter.getStatuses() != null) {
-				predicates.add(cb.equal(root.get("status"), filter.getStatuses()));
+				predicates.add(root.get("status").in(filter.getStatuses()));
 			}
 			if (filter.getMinBalance() != null) {
 				predicates.add(cb.greaterThanOrEqualTo(root.get("balance"), filter.getMinBalance()));
@@ -488,12 +488,26 @@ public class AccountServiceImpl implements AccountService {
 		if (account.getStatus() != AccountStatus.FROZEN) {
 			throw new IllegalStateException("Account is not frozen");
 		}
-
+		AccountStatus previousStatus = account.getStatus();
 		account.setStatus(AccountStatus.ACTIVE);
 		account.setFrozenReason(null);
 		account.setUpdatedBy(updatedBy);
 
 		account = accountRepository.save(account);
+
+		// Store event
+		AccountStatusChangedEvent event = AccountStatusChangedEvent.builder()
+				.accountNumber(accountNumber)
+				.previousStatus(previousStatus)
+				.newStatus(AccountStatus.ACTIVE)
+				.reason("Account unfrozen")
+				.build();
+
+		eventSourcingService.storeEvent(accountNumber, "AccountUnfrozen", event,
+				account.getUserId(), UUID.randomUUID().toString(), null);
+
+		outboxService.saveEvent("ACCOUNT", accountNumber, "AccountUnfrozen",
+				"banking.account.unfrozen", event);
 
 		log.info("Account unfrozen: {}", accountNumber);
 		return mapToResponse(account);
