@@ -10,8 +10,9 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class GatewayCaptureResponse {
-	private boolean success;
+    private boolean success;
     private String transactionId;
     private String errorCode;
     private String errorMessage;
+    private String rawResponse;// for debugging
 }

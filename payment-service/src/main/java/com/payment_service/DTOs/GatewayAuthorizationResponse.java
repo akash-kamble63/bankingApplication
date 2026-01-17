@@ -10,10 +10,11 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class GatewayAuthorizationResponse {
-	private boolean success;
+    private boolean success;
     private String gatewayPaymentId;
     private String authorizationCode;
     private String errorCode;
     private String errorMessage;
     private String status;
+    private String rawResponse;// for debugging
 }

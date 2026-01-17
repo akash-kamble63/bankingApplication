@@ -26,6 +26,7 @@ import com.account_service.dto.AccountSummaryResponse;
 import com.account_service.dto.BalanceResponse;
 import com.account_service.dto.BalanceUpdatedEvent;
 import com.account_service.dto.CreateAccountRequest;
+import com.account_service.dto.HoldReleasedEvent;
 import com.account_service.dto.UpdateAccountRequest;
 import com.account_service.dto.UserAccountSummary;
 import com.account_service.enums.AccountStatus;
@@ -35,7 +36,9 @@ import com.account_service.exception.ResourceConflictException;
 import com.account_service.exception.ResourceNotFoundException;
 import com.account_service.model.Account;
 import com.account_service.model.AccountEventStore;
+import com.account_service.model.AccountHold;
 import com.account_service.patterns.AccountCreatedEvent;
+import com.account_service.repository.AccountHoldRepository;
 import com.account_service.repository.AccountRepository;
 import com.account_service.service.AccountService;
 import com.account_service.service.AuditService;
@@ -53,6 +56,7 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class AccountServiceImpl implements AccountService {
 	private final AccountRepository accountRepository;
+	private final AccountHoldRepository accountHoldRepository;
 	private final OutboxService outboxService;
 	private final EventSourcingService eventSourcingService;
 	private final AuditService auditService;
@@ -640,6 +644,189 @@ public class AccountServiceImpl implements AccountService {
 		return AccountEventResponse.builder().id(event.getId()).eventId(event.getEventId())
 				.aggregateId(event.getAggregateId()).eventType(event.getEventType()).version(event.getVersion())
 				.eventData(event.getEventData()).metadata(event.getMetadata()).timestamp(event.getTimestamp()).build();
+	}
+
+	// Add these methods to your AccountServiceImpl class
+	// Place them after your existing debitAccount method
+
+	/**
+	 * Credit account with transaction details (for saga compensation)
+	 */
+	@Override
+	@Transactional
+	@Retry(name = "database")
+	@CacheEvict(value = { "accountDetails", "balance" }, key = "#accountId.toString()")
+	public void credit(Long accountId, BigDecimal amount, String transactionId, String description) {
+		log.info("Crediting account ID: {} with amount: {} for transaction: {}",
+				accountId, amount, transactionId);
+
+		Account account = accountRepository.findById(accountId)
+				.orElseThrow(() -> new ResourceNotFoundException("Account not found: " + accountId));
+
+		if (account.getStatus() != AccountStatus.ACTIVE) {
+			throw new IllegalStateException("Account is not active");
+		}
+
+		BigDecimal previousBalance = account.getBalance();
+		account.setBalance(account.getBalance().add(amount));
+		account.setAvailableBalance(account.getAvailableBalance().add(amount));
+		accountRepository.save(account);
+
+		// Store balance update event
+		BalanceUpdatedEvent event = BalanceUpdatedEvent.builder()
+				.accountNumber(account.getAccountNumber())
+				.previousBalance(previousBalance)
+				.newBalance(account.getBalance())
+				.amount(amount)
+				.operation("CREDIT")
+				.reason(description)
+				.transactionReference(transactionId)
+				.build();
+
+		eventSourcingService.storeEvent(
+				account.getAccountNumber(),
+				"BalanceUpdated",
+				event,
+				account.getUserId(),
+				UUID.randomUUID().toString(),
+				transactionId);
+
+		outboxService.saveEvent(
+				"ACCOUNT",
+				account.getAccountNumber(),
+				"BalanceUpdated",
+				"banking.balance.updated",
+				event);
+
+		log.info("Account credited successfully: accountId={}, newBalance={}",
+				accountId, account.getBalance());
+	}
+
+	/**
+	 * Debit account with transaction details (for saga compensation)
+	 */
+	@Override
+	@Transactional
+	@Retry(name = "database")
+	@CacheEvict(value = { "accountDetails", "balance" }, key = "#accountId.toString()")
+	public void debit(Long accountId, BigDecimal amount, String transactionId, String description) {
+		log.info("Debiting account ID: {} with amount: {} for transaction: {}",
+				accountId, amount, transactionId);
+
+		Account account = accountRepository.findById(accountId)
+				.orElseThrow(() -> new ResourceNotFoundException("Account not found: " + accountId));
+
+		if (account.getStatus() != AccountStatus.ACTIVE) {
+			throw new IllegalStateException("Account is not active");
+		}
+
+		// Check sufficient balance
+		BigDecimal availableWithOverdraft = account.getAvailableBalance()
+				.add(account.getOverdraftLimit());
+		if (availableWithOverdraft.compareTo(amount) < 0) {
+			throw new IllegalStateException("Insufficient balance");
+		}
+
+		BigDecimal previousBalance = account.getBalance();
+		account.setBalance(account.getBalance().subtract(amount));
+		account.setAvailableBalance(account.getAvailableBalance().subtract(amount));
+		accountRepository.save(account);
+
+		// Store balance update event
+		BalanceUpdatedEvent event = BalanceUpdatedEvent.builder()
+				.accountNumber(account.getAccountNumber())
+				.previousBalance(previousBalance)
+				.newBalance(account.getBalance())
+				.amount(amount)
+				.operation("DEBIT")
+				.reason(description)
+				.transactionReference(transactionId)
+				.build();
+
+		eventSourcingService.storeEvent(
+				account.getAccountNumber(),
+				"BalanceUpdated",
+				event,
+				account.getUserId(),
+				UUID.randomUUID().toString(),
+				transactionId);
+
+		outboxService.saveEvent(
+				"ACCOUNT",
+				account.getAccountNumber(),
+				"BalanceUpdated",
+				"banking.balance.updated",
+				event);
+
+		log.info("Account debited successfully: accountId={}, newBalance={}",
+				accountId, account.getBalance());
+	}
+
+	/**
+	 * Release a hold on an account (for saga compensation)
+	 */
+	@Override
+	@Transactional
+	@Retry(name = "database")
+	@CacheEvict(value = { "accountDetails", "balance" }, key = "#accountId.toString()")
+	public void releaseHold(Long accountId, Long holdId) {
+		log.info("Releasing hold: accountId={}, holdId={}", accountId, holdId);
+
+		// Find the account
+		Account account = accountRepository.findById(accountId)
+				.orElseThrow(() -> new ResourceNotFoundException("Account not found: " + accountId));
+
+		// Find the hold
+		AccountHold hold = accountHoldRepository.findById(holdId)
+				.orElseThrow(() -> new ResourceNotFoundException("Hold not found: " + holdId));
+
+		// Verify hold belongs to this account
+		if (!hold.getAccountId().equals(accountId)) {
+			throw new IllegalArgumentException(
+					"Hold " + holdId + " does not belong to account " + accountId);
+		}
+
+		// Check if already released
+		if (hold.isReleased()) {
+			log.warn("Hold already released: holdId={}", holdId);
+			return;
+		}
+
+		// Mark hold as released
+		hold.setReleased(true);
+		hold.setReleasedAt(LocalDateTime.now());
+		accountHoldRepository.save(hold);
+
+		// Update account available balance
+		account.setAvailableBalance(account.getAvailableBalance().add(hold.getAmount()));
+		accountRepository.save(account);
+
+		// Store event
+		HoldReleasedEvent event = HoldReleasedEvent.builder()
+				.accountNumber(account.getAccountNumber())
+				.holdId(holdId)
+				.amount(hold.getAmount())
+				.reason(hold.getReason())
+				.releasedAt(LocalDateTime.now())
+				.build();
+
+		eventSourcingService.storeEvent(
+				account.getAccountNumber(),
+				"HoldReleased",
+				event,
+				account.getUserId(),
+				UUID.randomUUID().toString(),
+				null);
+
+		outboxService.saveEvent(
+				"ACCOUNT",
+				account.getAccountNumber(),
+				"HoldReleased",
+				"banking.hold.released",
+				event);
+
+		log.info("Hold released successfully: holdId={}, amount={}, newAvailableBalance={}",
+				holdId, hold.getAmount(), account.getAvailableBalance());
 	}
 
 }

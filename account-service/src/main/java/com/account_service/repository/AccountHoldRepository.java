@@ -15,6 +15,11 @@ import com.account_service.model.AccountHold;
 
 public interface AccountHoldRepository extends JpaRepository<AccountHold, Long> {
 
+	/**
+	 * Find all unreleased holds for an account
+	 */
+	List<AccountHold> findByAccountIdAndReleasedFalse(Long accountId);
+
 	// Find operations
 	Optional<AccountHold> findByHoldReference(String holdReference);
 
@@ -34,6 +39,10 @@ public interface AccountHoldRepository extends JpaRepository<AccountHold, Long> 
 	@Query("SELECT h FROM AccountHold h WHERE h.status = 'ACTIVE' AND h.expiresAt < :expiryTime")
 	List<AccountHold> findExpiredHolds(@Param("expiryTime") LocalDateTime expiryTime);
 
+	long countByAccountIdAndReleasedFalse(Long accountId);
+
+	List<AccountHold> findByTransactionReference(String transactionReference);
+
 	// Update operations
 	@Modifying
 	@Query("UPDATE AccountHold h SET h.status = :status, h.releasedAt = :releasedAt WHERE h.id = :holdId")
@@ -46,4 +55,9 @@ public interface AccountHoldRepository extends JpaRepository<AccountHold, Long> 
 
 	// Count operations
 	long countByAccountIdAndStatus(Long accountId, HoldStatus status);
+
+	@Modifying
+	@Query("UPDATE AccountHold h SET h.released = true, h.releasedAt = :now " +
+			"WHERE h.released = false AND h.expiresAt IS NOT NULL AND h.expiresAt < :now")
+	int autoReleaseExpiredHolds(@Param("now") LocalDateTime now);
 }

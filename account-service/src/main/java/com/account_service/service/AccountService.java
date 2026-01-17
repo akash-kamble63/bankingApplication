@@ -18,6 +18,7 @@ import com.account_service.dto.UserAccountSummary;
 
 public interface AccountService {
 	AccountResponse updateAccount(String accountNumber, UpdateAccountRequest request, String updatedBy);
+
 	AccountResponse createAccount(CreateAccountRequest request, String createdBy);
 
 	BalanceResponse creditAccount(String accountNumber, BigDecimal amount, String reason, String transactionRef);
@@ -49,5 +50,11 @@ public interface AccountService {
 	List<AccountEventResponse> getAccountEvents(String accountNumber, Long fromVersion);
 
 	AccountResponse getAccountSnapshot(String accountNumber, String pointInTime);
+
+	void releaseHold(Long accountId, Long holdId);
+
+	void debit(Long accountId, BigDecimal amount, String transactionId, String description);
+
+	void credit(Long accountId, BigDecimal amount, String transactionId, String description);
 
 }

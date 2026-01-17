@@ -88,4 +88,8 @@ public class AccountMetrics {
 		Counter.builder("account.cache.operations").tag("cache", cacheName).tag("result", hit ? "hit" : "miss")
 				.description("Cache operation statistics").register(meterRegistry).increment();
 	}
+
+	public Timer.Sample startTimer() {
+		return Timer.start(meterRegistry);
+	}
 }

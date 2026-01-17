@@ -22,28 +22,30 @@ import lombok.extern.slf4j.Slf4j;
 @Component
 @RequiredArgsConstructor
 public class IdempotencyInterceptor implements HandlerInterceptor {
-	private final RedisTemplate<String, Object> redisTemplate;
+    private final RedisTemplate<String, Object> redisTemplate;
     private final IdempotencyService idempotencyService;
     private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
     private static final String LOCK_PREFIX = "idempotency_lock:";
-    
+
     @Override
-    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, 
-                             Object handler) throws Exception {
-        
-        if (!(handler instanceof HandlerMethod)) return true;
-        
+    public boolean preHandle(HttpServletRequest request, HttpServletResponse response,
+            Object handler) throws Exception {
+
+        if (!(handler instanceof HandlerMethod))
+            return true;
+
         HandlerMethod handlerMethod = (HandlerMethod) handler;
         Idempotent idempotent = handlerMethod.getMethodAnnotation(Idempotent.class);
-        if (idempotent == null) return true;
-        
+        if (idempotent == null)
+            return true;
+
         String idempotencyKey = request.getHeader(IDEMPOTENCY_KEY_HEADER);
         if (idempotencyKey == null || idempotencyKey.isEmpty()) {
             response.setStatus(HttpStatus.BAD_REQUEST.value());
             response.getWriter().write("{\"error\":\"Idempotency-Key header required\"}");
             return false;
         }
-        
+
         // Check if already processed
         Optional<IdempotencyRecord> existingRecord = idempotencyService.checkIdempotency(idempotencyKey);
         if (existingRecord.isPresent() && !existingRecord.get().getProcessing()) {
@@ -54,30 +56,30 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
             response.getWriter().write(record.getResponseBody());
             return false;
         }
-        
-        // ✅ Atomic lock acquisition with SETNX
+
+        // Atomic lock acquisition with SETNX
         String lockKey = LOCK_PREFIX + idempotencyKey;
         Boolean acquired = redisTemplate.opsForValue()
-            .setIfAbsent(lockKey, "processing", Duration.ofMinutes(5));
-        
+                .setIfAbsent(lockKey, "processing", Duration.ofMinutes(5));
+
         if (Boolean.FALSE.equals(acquired)) {
             // Another request is processing
             response.setStatus(HttpStatus.CONFLICT.value());
             response.getWriter().write("{\"error\":\"Request already processing\"}");
             return false;
         }
-        
+
         // Store lock key for cleanup in afterCompletion
         request.setAttribute("idempotencyLock", lockKey);
         request.setAttribute("idempotencyKey", idempotencyKey);
-        
+
         return true;
     }
-    
+
     @Override
     public void afterCompletion(HttpServletRequest request, HttpServletResponse response,
-                               Object handler, Exception ex) {
-        // ✅ Always release lock
+            Object handler, Exception ex) {
+        // release lock
         String lockKey = (String) request.getAttribute("idempotencyLock");
         if (lockKey != null) {
             redisTemplate.delete(lockKey);

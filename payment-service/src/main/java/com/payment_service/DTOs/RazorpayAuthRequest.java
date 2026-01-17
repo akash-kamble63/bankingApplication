@@ -10,8 +10,13 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class RazorpayAuthRequest {
-	private String token;
+    private String token;
     private Long amount;
     private String currency;
     private String receipt;
+    @Builder.Default
+    private Boolean capture = false; // false for authorization only
+
+    private String description;
+    private String notes;
 }
